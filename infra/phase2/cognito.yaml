@@ -1,0 +1,182 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >
+  AIOps Multi-Agent Demo — Phase 2 (Cognito + 2 Lambdas + 3 IAM Roles).
+  Standard AWS resources only. AgentCore Gateway/Target are created via
+  infra/phase2/setup_gateway.py (boto3, hybrid pattern).
+
+Parameters:
+  DemoUser:
+    Type: String
+    Description: Multi-user namespace prefix (matches Phase 0 DEMO_USER).
+    AllowedPattern: '^[a-zA-Z0-9-]{1,16}$'
+    MinLength: 1
+    MaxLength: 16
+
+Resources:
+
+  # === Cognito ========================================================
+
+  UserPool:
+    Type: AWS::Cognito::UserPool
+    Properties:
+      UserPoolName: !Sub 'aiops-demo-${DemoUser}-userpool'
+      MfaConfiguration: 'OFF'
+      AdminCreateUserConfig:
+        AllowAdminCreateUserOnly: true
+      Policies:
+        PasswordPolicy:
+          MinimumLength: 8
+          RequireLowercase: false
+          RequireNumbers: false
+          RequireSymbols: false
+          RequireUppercase: false
+
+  UserPoolDomain:
+    Type: AWS::Cognito::UserPoolDomain
+    Properties:
+      UserPoolId: !Ref UserPool
+      Domain: !Sub 'aiops-demo-${DemoUser}'
+
+  UserPoolResourceServer:
+    Type: AWS::Cognito::UserPoolResourceServer
+    Properties:
+      UserPoolId: !Ref UserPool
+      Identifier: !Sub 'aiops-demo-${DemoUser}-resource-server'
+      Name: 'Gateway Invoke'
+      Scopes:
+        - ScopeName: invoke
+          ScopeDescription: Invoke AgentCore Gateway tools
+
+  UserPoolClientC:
+    Type: AWS::Cognito::UserPoolClient
+    DependsOn: UserPoolResourceServer
+    Properties:
+      ClientName: !Sub 'aiops-demo-${DemoUser}-client-c'
+      UserPoolId: !Ref UserPool
+      GenerateSecret: true
+      AllowedOAuthFlowsUserPoolClient: true
+      AllowedOAuthFlows:
+        - client_credentials
+      AllowedOAuthScopes:
+        - !Sub 'aiops-demo-${DemoUser}-resource-server/invoke'
+      ExplicitAuthFlows:
+        - ALLOW_REFRESH_TOKEN_AUTH
+      SupportedIdentityProviders:
+        - COGNITO
+
+  # === Lambda — history mock ==========================================
+
+  HistoryMockLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub 'aiops-demo-${DemoUser}-history-mock-role'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+
+  HistoryMockLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub 'aiops-demo-${DemoUser}-history-mock'
+      Runtime: python3.13
+      Handler: handler.lambda_handler
+      Code: ./lambda/history_mock
+      Role: !GetAtt HistoryMockLambdaRole.Arn
+      Timeout: 10
+      MemorySize: 128
+      Environment:
+        Variables:
+          DEMO_USER: !Ref DemoUser
+
+  # === Lambda — CloudWatch wrapper ====================================
+
+  CloudWatchWrapperLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub 'aiops-demo-${DemoUser}-cloudwatch-wrapper-role'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: cloudwatch-read
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - cloudwatch:DescribeAlarms
+                  - cloudwatch:DescribeAlarmHistory
+                Resource: '*'
+
+  CloudWatchWrapperLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub 'aiops-demo-${DemoUser}-cloudwatch-wrapper'
+      Runtime: python3.13
+      Handler: handler.lambda_handler
+      Code: ./lambda/cloudwatch_wrapper
+      Role: !GetAtt CloudWatchWrapperLambdaRole.Arn
+      Timeout: 15
+      MemorySize: 128
+      Environment:
+        Variables:
+          DEMO_USER: !Ref DemoUser
+
+  # === IAM — Gateway execution role ===================================
+
+  GatewayIamRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub 'aiops-demo-${DemoUser}-phase2-gateway-role'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: bedrock-agentcore.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: invoke-wrapper-lambdas
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: lambda:InvokeFunction
+                Resource:
+                  - !GetAtt HistoryMockLambda.Arn
+                  - !GetAtt CloudWatchWrapperLambda.Arn
+
+Outputs:
+  UserPoolId:
+    Description: Cognito UserPool ID
+    Value: !Ref UserPool
+  Domain:
+    Description: Cognito UserPool Domain prefix
+    Value: !Ref UserPoolDomain
+  ClientCId:
+    Description: Cognito UserPoolClient C (M2M client_credentials)
+    Value: !Ref UserPoolClientC
+  ResourceServerScope:
+    Description: OAuth2 scope for Gateway invoke (full name)
+    Value: !Sub 'aiops-demo-${DemoUser}-resource-server/invoke'
+  LambdaHistoryMockArn:
+    Description: history-mock Lambda ARN
+    Value: !GetAtt HistoryMockLambda.Arn
+  LambdaCloudWatchWrapperArn:
+    Description: cloudwatch-wrapper Lambda ARN
+    Value: !GetAtt CloudWatchWrapperLambda.Arn
+  GatewayIamRoleArn:
+    Description: IAM Role ARN for AgentCore Gateway (Lambda invoke only)
+    Value: !GetAtt GatewayIamRole.Arn
