@@ -1,0 +1,23 @@
+name: payment-api-5xx-rate
+description: Payment APIGW 5XX rate > 10/min for 5 minutes
+owner: payments
+service: payment
+metric:
+  namespace: AWS/ApiGateway
+  name: 5XXError
+  statistic: Sum
+  dimensions:
+  - Name: ApiName
+    Value: payment-api
+evaluation:
+  period_seconds: 60
+  evaluation_periods: 5
+  threshold: 10.0
+  comparison_operator: GreaterThanThreshold
+  treat_missing_data: missing
+severity: warning
+actions:
+  ok: []
+  alarm:
+  - sns:topic:cloud-ops-alerts
+  insufficient_data: []

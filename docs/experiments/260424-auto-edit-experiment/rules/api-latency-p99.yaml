@@ -1,0 +1,23 @@
+name: api-latency-p99
+description: APIGW p99 latency > 2000ms
+owner: platform
+service: api
+metric:
+  namespace: AWS/ApiGateway
+  name: Latency
+  statistic: p99
+  dimensions:
+  - Name: ApiName
+    Value: public-api
+evaluation:
+  period_seconds: 300
+  evaluation_periods: 2
+  threshold: 2000.0
+  comparison_operator: GreaterThanThreshold
+  treat_missing_data: missing
+severity: warning
+actions:
+  ok: []
+  alarm:
+  - sns:topic:cloud-ops-alerts
+  insufficient_data: []

@@ -1,0 +1,23 @@
+name: dynamodb-throttle-orders
+description: DynamoDB orders table throttled > 0
+owner: orders
+service: orders
+metric:
+  namespace: AWS/DynamoDB
+  name: ThrottledRequests
+  statistic: Sum
+  dimensions:
+  - Name: TableName
+    Value: orders
+evaluation:
+  period_seconds: 60
+  evaluation_periods: 1
+  threshold: 0.0
+  comparison_operator: GreaterThanThreshold
+  treat_missing_data: missing
+severity: warning
+actions:
+  ok: []
+  alarm:
+  - sns:topic:cloud-ops-alerts
+  insufficient_data: []

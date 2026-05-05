@@ -1,0 +1,25 @@
+name: ecs-memory-web
+description: ECS web service memory > 60%
+owner: platform
+service: web
+metric:
+  namespace: AWS/ECS
+  name: MemoryUtilization
+  statistic: Average
+  dimensions:
+  - Name: ServiceName
+    Value: web
+  - Name: ClusterName
+    Value: prod
+evaluation:
+  period_seconds: 300
+  evaluation_periods: 1
+  threshold: 60.0
+  comparison_operator: GreaterThanThreshold
+  treat_missing_data: missing
+severity: warning
+actions:
+  ok: []
+  alarm:
+  - sns:topic:cloud-ops-alerts
+  insufficient_data: []

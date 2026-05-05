@@ -1,0 +1,23 @@
+name: lambda-checkout-errors
+description: Checkout Lambda Errors >= 1 per minute
+owner: payments
+service: checkout
+metric:
+  namespace: AWS/Lambda
+  name: Errors
+  statistic: Sum
+  dimensions:
+  - Name: FunctionName
+    Value: checkout-handler
+evaluation:
+  period_seconds: 60
+  evaluation_periods: 1
+  threshold: 1.0
+  comparison_operator: GreaterThanOrEqualToThreshold
+  treat_missing_data: missing
+severity: warning
+actions:
+  ok: []
+  alarm:
+  - sns:topic:cloud-ops-alerts
+  insufficient_data: []

@@ -1,0 +1,69 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: AIOps Demo Phase 0 — CloudWatch Alarms (minimum, 1 real + 1 noise)
+
+Parameters:
+  InstanceId:
+    Description: EC2 simulator instance ID (from ec2-simulator stack)
+    Type: String
+
+  DemoUser:
+    Description: Demo user identifier (multi-user 격리용 alarm 이름 prefix)
+    Type: String
+    AllowedPattern: '^[a-zA-Z0-9-]{1,16}$'
+
+Resources:
+  # ── real — chaos: stop_instance 시 fire
+  PaymentStatusCheck:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub payment-${DemoUser}-status-check
+      AlarmDescription: 'EC2 status check failed — real, 시나리오 메인 트리거 (chaos: stop_instance)'
+      Namespace: AWS/EC2
+      MetricName: StatusCheckFailed
+      Dimensions:
+        - Name: InstanceId
+          Value: !Ref InstanceId
+      Statistic: Maximum
+      Period: 60
+      EvaluationPeriods: 2
+      Threshold: 0
+      ComparisonOperator: GreaterThanThreshold
+      # breaching: EC2 stop → metric 송신 중단 → "인스턴스 죽음" = ALARM (AWS 모범 사례).
+      # notBreaching 면 stop chaos 가 알람 발화 못 함.
+      TreatMissingData: breaching
+      Tags:
+        - Key: Project
+          Value: aiops-demo
+        - Key: Classification
+          Value: real
+
+  # ── noise — Monitor Agent 분류 학습용 (정상 운영 중에도 fire)
+  PaymentNoisyCpu:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub payment-${DemoUser}-noisy-cpu
+      AlarmDescription: 'CPU > 0.5% — NOISE, 의도적으로 너무 낮은 임계값 (Monitor agent 분류 학습용)'
+      Namespace: AWS/EC2
+      MetricName: CPUUtilization
+      Dimensions:
+        - Name: InstanceId
+          Value: !Ref InstanceId
+      Statistic: Average
+      Period: 60
+      EvaluationPeriods: 1
+      Threshold: 0.5
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+      Tags:
+        - Key: Project
+          Value: aiops-demo
+        - Key: Classification
+          Value: noise
+
+Outputs:
+  AlarmCount:
+    Value: 2
+  RealAlarms:
+    Value: !Sub payment-${DemoUser}-status-check
+  NoiseAlarms:
+    Value: !Sub payment-${DemoUser}-noisy-cpu

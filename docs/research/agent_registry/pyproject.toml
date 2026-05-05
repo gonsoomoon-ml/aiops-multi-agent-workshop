@@ -1,0 +1,11 @@
+[project]
+name = "agent-registry-test"
+version = "0.1.0"
+description = "Smoke test for AWS Agent Registry (Bedrock AgentCore preview)"
+requires-python = ">=3.11"
+dependencies = [
+    "boto3>=1.40.0",
+]
+
+[tool.uv]
+package = false

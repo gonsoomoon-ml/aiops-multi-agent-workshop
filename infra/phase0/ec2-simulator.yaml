@@ -1,0 +1,119 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: AIOps Demo Phase 0 — EC2 simulator (minimum, Flask /health only)
+
+Parameters:
+  AllowedSshIp:
+    Description: Operator IP for SSH/8080 access (CIDR), e.g. 1.2.3.4/32
+    Type: String
+    AllowedPattern: '^(\d{1,3}\.){3}\d{1,3}/\d{1,2}$'
+
+  KeyPairName:
+    Description: EC2 KeyPair name (will be created if not exists)
+    Type: String
+    Default: aiops-demo-keypair
+
+  InstanceType:
+    Type: String
+    Default: t3.micro
+
+  AmiId:
+    Type: AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>
+    Default: /aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-x86_64
+
+Resources:
+  EC2KeyPair:
+    Type: AWS::EC2::KeyPair
+    Properties:
+      KeyName: !Ref KeyPairName
+      Tags:
+        - Key: Project
+          Value: aiops-demo
+
+  SimulatorSG:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: AIOps demo EC2 simulator
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: !Ref AllowedSshIp
+        - IpProtocol: tcp
+          FromPort: 8080
+          ToPort: 8080
+          CidrIp: !Ref AllowedSshIp
+      Tags:
+        - Key: Project
+          Value: aiops-demo
+
+  SimulatorInstance:
+    Type: AWS::EC2::Instance
+    Properties:
+      InstanceType: !Ref InstanceType
+      ImageId: !Ref AmiId
+      KeyName: !Ref EC2KeyPair
+      SecurityGroupIds:
+        - !Ref SimulatorSG
+      UserData:
+        Fn::Base64: |
+          #!/bin/bash
+          set -e
+          dnf install -y python3 python3-pip
+          pip3 install flask
+
+          mkdir -p /opt/payment-api
+          cat > /opt/payment-api/app.py <<'PYEOF'
+          from flask import Flask, jsonify
+          app = Flask(__name__)
+
+          @app.get("/health")
+          def health():
+              return jsonify({"status": "ok"}), 200
+
+          if __name__ == "__main__":
+              app.run(host="0.0.0.0", port=8080)
+          PYEOF
+
+          cat > /etc/systemd/system/payment-api.service <<EOF
+          [Unit]
+          Description=AIOps Demo Payment API (minimum)
+          After=network.target
+          [Service]
+          ExecStart=/usr/bin/python3 /opt/payment-api/app.py
+          Restart=on-failure
+          User=ec2-user
+          [Install]
+          WantedBy=multi-user.target
+          EOF
+          systemctl daemon-reload
+          systemctl enable --now payment-api.service
+
+          echo "[ok] phase 0 minimum bootstrap complete"
+      Tags:
+        - Key: Project
+          Value: aiops-demo
+        - Key: Name
+          Value: aiops-demo-simulator
+
+  SimulatorEIP:
+    Type: AWS::EC2::EIP
+    Properties:
+      Tags:
+        - Key: Project
+          Value: aiops-demo
+
+  SimulatorEIPAssociation:
+    Type: AWS::EC2::EIPAssociation
+    Properties:
+      AllocationId: !GetAtt SimulatorEIP.AllocationId
+      InstanceId: !Ref SimulatorInstance
+
+Outputs:
+  # Note: Export 제거됨 (C6, 2026-05-04) — 동일 계정 다중 시연자 충돌 방지.
+  # Phase 2+ 에서 cross-stack reference 필요 시 stack-name 에 DEMO_USER 포함된 Export.Name 으로 재추가.
+  InstanceId:
+    Value: !Ref SimulatorInstance
+  PublicIp:
+    Value: !GetAtt SimulatorEIP.PublicIp
+  PaymentApiUrl:
+    Value: !Sub http://${SimulatorEIP.PublicIp}:8080

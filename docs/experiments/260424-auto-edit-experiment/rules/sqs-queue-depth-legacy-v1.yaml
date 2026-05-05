@@ -1,0 +1,23 @@
+name: sqs-queue-depth-legacy-v1
+description: Legacy v1 SQS depth > 100
+owner: unknown
+service: legacy-v1
+metric:
+  namespace: AWS/SQS
+  name: ApproximateNumberOfMessagesVisible
+  statistic: Maximum
+  dimensions:
+  - Name: QueueName
+    Value: legacy-v1-events
+evaluation:
+  period_seconds: 300
+  evaluation_periods: 1
+  threshold: 100.0
+  comparison_operator: GreaterThanThreshold
+  treat_missing_data: missing
+severity: warning
+actions:
+  ok: []
+  alarm:
+  - sns:topic:cloud-ops-alerts
+  insufficient_data: []

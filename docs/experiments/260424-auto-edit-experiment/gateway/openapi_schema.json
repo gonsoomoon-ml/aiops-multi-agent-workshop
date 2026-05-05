@@ -1,0 +1,143 @@
+{
+  "openapi": "3.0.0",
+  "info": {
+    "title": "Noise Alarm Agent — Tool Targets",
+    "version": "1.0.0",
+    "description": "OpenAPI schema for registering the 6 tool functions with AgentCore Gateway as Lambda targets."
+  },
+  "paths": {
+    "/describe_alarms": {
+      "post": {
+        "operationId": "describe_alarms",
+        "summary": "Return metric alarm definitions (CloudWatch-compatible)",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "alarm_names": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Optional list of AlarmName strings to filter"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "List of alarms",
+            "content": {"application/json": {"schema": {"type": "object"}}}
+          }
+        }
+      }
+    },
+    "/describe_alarm_history": {
+      "post": {
+        "operationId": "describe_alarm_history",
+        "summary": "Return StateUpdate history for one or all alarms",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "alarm_name": {"type": "string"},
+                  "start_time": {"type": "string", "format": "date-time"},
+                  "end_time": {"type": "string", "format": "date-time"},
+                  "max_records": {"type": "integer", "default": 1000}
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {"description": "History items", "content": {"application/json": {"schema": {"type": "object"}}}}
+        }
+      }
+    },
+    "/get_alarm_statistics": {
+      "post": {
+        "operationId": "get_alarm_statistics",
+        "summary": "Pre-aggregated per-alarm 7-day metrics (Mock/Lambda helper)",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "alarm_name": {"type": "string"},
+                  "period_days": {"type": "integer", "default": 7}
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {"description": "Aggregates", "content": {"application/json": {"schema": {"type": "object"}}}}
+        }
+      }
+    },
+    "/list_files": {
+      "post": {
+        "operationId": "list_files",
+        "summary": "List files under a repo path",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "path": {"type": "string", "default": "rules/"}
+                }
+              }
+            }
+          }
+        },
+        "responses": {"200": {"description": "Files", "content": {"application/json": {"schema": {"type": "object"}}}}}
+      }
+    },
+    "/get_file": {
+      "post": {
+        "operationId": "get_file",
+        "summary": "Read a file from the repo",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {"path": {"type": "string"}},
+                "required": ["path"]
+              }
+            }
+          }
+        },
+        "responses": {"200": {"description": "File contents", "content": {"application/json": {"schema": {"type": "object"}}}}}
+      }
+    },
+    "/put_file": {
+      "post": {
+        "operationId": "put_file",
+        "summary": "Create or update a file in the repo",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "path": {"type": "string"},
+                  "content": {"type": "string"},
+                  "commit_message": {"type": "string", "default": "chore: update file"}
+                },
+                "required": ["path", "content"]
+              }
+            }
+          }
+        },
+        "responses": {"200": {"description": "Commit info", "content": {"application/json": {"schema": {"type": "object"}}}}}
+      }
+    }
+  }
+}
