@@ -1,13 +1,46 @@
+# Python
 __pycache__/
 *.pyc
 .pytest_cache/
-.env
-.venv/
-venv/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
 *.egg-info/
 dist/
 build/
+
+# Virtualenvs
+.venv/
+venv/
+
+# Secrets / credentials
+.env
+*.pem
+*.key
+*.p12
+*.pfx
+.aws/
+
+# IDE / editors
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+*.bak
+*.tmp
+
+# OS
 .DS_Store
+Thumbs.db
+
+# Claude project state
+.claude/
+
+# Logs
+*.log
+
+# Project-specific
 diagnosis/*.md
 !diagnosis/.gitkeep
-*.pem
