@@ -67,7 +67,7 @@ echo "  부팅 디버깅: aws ec2 get-console-output --instance-id $INSTANCE_ID 
 
 ## 참고 — 즉시 영향 없는 정보
 
-- AWS Account 057716757052 (Administrator) 검증 완료 (bootstrap.sh 5단계 통과)
+- AWS Account `<ACCOUNT_ID>` (Administrator) 검증 완료 (bootstrap.sh 5단계 통과)
 - GitHub PAT SSM 저장 완료: `/aiops-demo/github-token`
 - `.env` 생성됨 (`AWS_REGION=us-west-2`)
 - 다음 명령: `bash infra/phase0/deploy.sh` (대기 중)
