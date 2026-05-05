@@ -44,3 +44,8 @@ Thumbs.db
 # Project-specific
 diagnosis/*.md
 !diagnosis/.gitkeep
+
+# Phase 2: vendored mock_data into Lambda zip (deploy.sh populates at deploy time)
+infra/phase2/lambda/history_mock/mock_data/
+# Phase 2: cfn package output
+infra/phase2/cognito.packaged.yaml

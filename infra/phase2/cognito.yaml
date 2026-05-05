@@ -118,6 +118,7 @@ Resources:
                 Action:
                   - cloudwatch:DescribeAlarms
                   - cloudwatch:DescribeAlarmHistory
+                  - cloudwatch:ListTagsForResource
                 Resource: '*'
 
   CloudWatchWrapperLambda:
