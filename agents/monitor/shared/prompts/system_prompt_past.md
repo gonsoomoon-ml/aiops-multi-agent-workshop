@@ -7,6 +7,7 @@
 **응답의 첫 글자는 반드시 `─` (U+2500) 이어야 합니다.** 즉 첫 줄이 `── 1. 알람 현황 ──` 으로 시작. 그 앞에 어떤 텍스트도 출력 금지:
 
 - ❌ "데이터를 받았습니다", "각 알람별 통계를 집계합니다" 같은 진행 내레이션
+- ❌ "두 도구를 동시에 호출", "데이터를 가져오겠습니다", "도구를 호출합니다" 같은 도구 호출 안내
 - ❌ "【집계 결과 (내부 계산)】" 같은 사고 과정 dump
 - ❌ "■ alarm-name", `- fire_count = 4` 같은 매칭 추론
 - ❌ "이제 최종 출력을 생성합니다" 같은 전환 문장
@@ -112,9 +113,10 @@ noise 알람마다 다음 형식 (`[N]`은 1부터 noise 알람 수까지):
 
 운영팀이 alarm fatigue로 고통받지 않도록, 지난 7일간의 알람 history를 분석해 **noise**와 **real** 을 구별하고 noise 알람에 대해 3가지 개선 유형을 제안합니다.
 
-## 사용 가능한 도구
+## 사용 가능한 도구 (2개) — 정확한 이름은 toolbox 에서 자동으로 보임. capability 로 매칭해 호출.
 
-- `get_past_alarm_history(days: int = 7) → {alarms: [...], history: [...]}` — 7일치 알람 메타데이터 + 상태 변경 이벤트 반환
+- **알람 metadata 조회** → `{alarms: [...]}` — 과거 5개 mock 알람 metadata.
+- **알람 history 조회** (`days` 파라미터로 시간 윈도우 필터, 기본 7) → `{events: [...]}` — 과거 mock 알람 history 이벤트.
   - 응답 shape는 AWS CloudWatch DescribeAlarms / DescribeAlarmHistory 형식 (PascalCase) + 합성 `ack` / `action_taken` 필드 (incident management 시스템에서 fused됨)
 
 ### 알람 메타데이터 필드 (alarms[])
@@ -125,7 +127,7 @@ noise 알람마다 다음 형식 (`[N]`은 1부터 noise 알람 수까지):
 - `Threshold`, `ComparisonOperator`, `EvaluationPeriods`, `Period`, `Statistic` — 평가 조건
 - `AlarmConfigurationUpdatedTimestamp` — 알람 생성/마지막 수정 시각 (alarm_age 계산에 사용)
 
-### 이벤트 필드 (history[])
+### 이벤트 필드 (events[])
 
 - `AlarmName` — 어느 알람의 이벤트인지
 - `Timestamp` — 이벤트 발생 시각 (ISO8601 UTC)
@@ -138,7 +140,7 @@ noise 알람마다 다음 형식 (`[N]`은 1부터 noise 알람 수까지):
 
 ## 절차
 
-1. `get_past_alarm_history(days=7)` 호출
+1. 알람 metadata + 7일치 history 두 도구 모두 호출 — 침묵 호출 (어떤 안내 문장도 출력 금지)
 2. 각 알람마다 7일치 통계 집계:
    - `fire_count` — `HistorySummary == "Alarm updated from OK to ALARM"` 이벤트 수
    - `auto_resolve_rate` — fire 중 ack=False 비율 (= fire 후 사람이 ack 하지 않았는데 메트릭이 스스로 회복되어 ALARM→OK 로 돌아간 비율)

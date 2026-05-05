@@ -52,7 +52,6 @@ aws_region="${aws_region:-us-west-2}"
 
 if grep -q "^AWS_REGION=" .env 2>/dev/null; then
     sed -i "s|^AWS_REGION=.*|AWS_REGION=$aws_region|" .env
-    sed -i "s|^AWS_DEFAULT_REGION=.*|AWS_DEFAULT_REGION=$aws_region|" .env
 fi
 pass "AWS_REGION=$aws_region"
 echo ""

@@ -1,38 +1,40 @@
-"""
-Strands tool: get_past_alarm_history.
+"""Strands @tool wrappers — Phase 1 frozen baseline path.
 
-Phase 1: mock_data/phase1/alarm_history.py를 직접 호출.
-Phase 2: AgentCore Gateway의 history mock Lambda Target으로 외부화 — 응답 shape 동일.
+mock_data 의 두 단위 함수를 1:1 매핑하는 두 개의 @tool. Phase 2 mode=past
+Gateway 도구와 도구 명·응답 shape 가 동일 — `run_local_import.py` (baseline) 와
+Phase 2 mode=past 가 같은 system_prompt 를 공유 가능.
 """
 from typing import Dict, List
+
 from strands import tool
 
 from mock_data.phase1.alarm_history import (
-    get_past_alarms_metadata,
     get_past_alarm_history as _mock_get_past_alarm_history,
+    get_past_alarms_metadata as _mock_get_past_alarms_metadata,
 )
 
 
 @tool
-def get_past_alarm_history(days: int = 7) -> Dict[str, List[Dict]]:
-    """7일치 alarm 메타데이터와 상태 변경 history를 반환합니다.
+def get_past_alarms_metadata() -> Dict[str, List[Dict]]:
+    """과거 5개 mock 알람의 metadata 를 반환한다.
 
-    응답 shape는 AWS CloudWatch DescribeAlarms / DescribeAlarmHistory API 형식
-    (PascalCase 필드)을 따른다. `ack` / `action_taken`은 CW에 없는 합성 필드로,
-    실 운영에서는 PagerDuty 등 incident management 시스템에서 fused됨.
+    응답 shape: ``{"alarms": [...]}`` — Phase 2 mode=past Gateway 의 동일 도구와
+    byte-level 동일. 각 entry 는 CloudWatch DescribeAlarms PascalCase 필드 +
+    ``Tags.Classification`` 합성 필드 (ground truth ``_*`` 필드는 strip 됨).
+    """
+    return {"alarms": _mock_get_past_alarms_metadata()}
+
+
+@tool
+def get_past_alarm_history(days: int = 7) -> Dict[str, List[Dict]]:
+    """과거 mock history 이벤트 (시간 윈도우 필터) 를 반환한다.
 
     Args:
-        days: 몇 일치 history를 가져올지 (기본 7일).
+        days: 최근 며칠 분 history 반환. 7 이상이면 전체.
 
     Returns:
-        dict with keys:
-            - alarms: [{AlarmName, AlarmDescription, MetricName, Namespace, Dimensions,
-                        Statistic, Period, EvaluationPeriods, Threshold,
-                        ComparisonOperator, AlarmConfigurationUpdatedTimestamp}, ...]
-            - history: [{AlarmName, Timestamp, HistoryItemType, HistorySummary,
-                         ack, action_taken}, ...]
+        ``{"events": [...]}`` — 각 event 는 ``AlarmName``/``Timestamp``/
+        ``HistoryItemType``/``HistorySummary`` 와 합성 필드 ``ack``/``action_taken``
+        포함. Phase 2 mode=past Gateway 의 동일 도구와 byte-level 동일.
     """
-    return {
-        "alarms": get_past_alarms_metadata(),
-        "history": _mock_get_past_alarm_history(days=days),
-    }
+    return {"events": _mock_get_past_alarm_history(days=days)}

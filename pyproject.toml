@@ -20,6 +20,8 @@ dependencies = [
     "uvicorn>=0.30.0",
     # HTTP client — Workflow Orchestrator (Phase 6b) + tests
     "httpx>=0.28.0",
+    # Phase 2 transitional — Cognito client_credentials POST. Phase 3 PR 에서 제거.
+    "requests>=2.31.0",
     # Config + utils
     "python-dotenv>=1.0.0",
     "PyYAML>=6.0",
