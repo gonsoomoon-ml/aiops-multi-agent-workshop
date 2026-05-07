@@ -32,7 +32,7 @@
 |---|---|---|---|
 | **C1** | Strands 로컬 → AgentCore Runtime 동일 코드 승격 | **★ 핵심 검증** — 이 단계의 raison d'être | **P3-A3 (D8)**: `mode=past` 호출 시 로컬 응답 ≡ Runtime 응답 (JSON schema-level diff 4 assertion × 3 runs) |
 | **C2** | Gateway + MCP로 도구 외부화 (Agent 코드에 도구 import 0건) | **회귀 없음 검증** — Phase 2 에서 충족, Phase 3 가 깨지 않는지 재확인 | **P3-A1**: `agents/monitor/runtime/agentcore_runtime.py` 에서 `from .tools` import 0건 grep |
-| C3 | A2A 프로토콜로 독립 Runtime 간 호출 | **준비만** — A2A 활성화는 Phase 4 (Incident caller 도입 시점, D5) | Phase 4 에서 검증 |
+| C3 | A2A 프로토콜로 독립 Runtime 간 호출 | **준비만** — A2A 활성화는 **Phase 6a** (Supervisor caller 도입 시점, D5 재이월). Phase 4 는 sequential CLI invoke 만 | Phase 6a 에서 검증 |
 | **C4** | AgentCore Policy로 권한·가드레일 외부화 | **prerequisite 충족** — Runtime 이 있어야 Policy 부착 가능. Phase 5 가 이 위에 올라감 | Phase 5 에서 NL Policy 부착 시 검증 |
 | C5 | 두 Orchestration 패턴 비교 (stretch) | 무관 — Phase 6b 의 별 트랙 | — |
 
@@ -48,7 +48,7 @@
 - AgentCore Memory (Phase 4+ — cross-agent context 필요성 평가 후, D6)
 - Incident / Change / Supervisor Runtime (Phase 4 / 6a)
 - AgentCore NL Policy 부착 (Phase 5)
-- Cognito Client B 추가 (Phase 4 — Supervisor → Sub-agent 인증 추가 시)
+- Cognito Client B 추가 (Phase 6a — Supervisor caller + A2A 통합 활성화 시)
 - 운영자 CLI (Cognito Client A) — Phase 6 (Supervisor 도입 시)
 
 → Phase 3 PR 의 영향 범위 = `agents/monitor/{shared,runtime}/` + 신규 IAM Role + 신규 OAuth provider + Runtime 자체. **Cognito stack / Gateway / Lambda 미터치.**
@@ -97,7 +97,7 @@ phase2.md §2 의 의사결정 로그 패턴 따라 — 각 결정의 **선택 /
 | **D2** | OAuth2CredentialProvider 생성 | **boto3 `bedrock-agentcore-control:create_oauth2_credential_provider`** (D1 의 같은 스크립트 안) | (a) CFN-native / (b) Lambda Custom Resource (A2A 샘플) | D1 결정의 자동 귀결 — 단일 스크립트 일관성. CFN-native 가용성 verify 불필요 (boto3 API 는 GA 확정) |
 | **D3** | Runtime 이름 | **`aiops_demo_${DEMO_USER}_monitor`** (underscore, suffix 없음) | (a) `aiops_demo_${DEMO_USER}_monitor_runtime` / (b) `monitor` (단순) | AgentCore agent_name 규약 (`^[a-zA-Z][a-zA-Z0-9_]{0,47}$`, 하이픈 불가). Phase 4+ 에서 `_incident`/`_change`/`_supervisor` 자연 확장 |
 | **D4** | entry 위치 + 시그니처 | **`agents/monitor/runtime/agentcore_runtime.py`** + (α) Minimal + streaming, no session caching | (a) entry.py (phase2 예고 이름) / (β) session caching / (γ) sync return | dba 의 `agentcore_runtime.py` 파일명 정확 차용. Phase 3 시나리오 = 1-shot 분석 → session 불필요. C1 검증 결정성 우선 (no caching) |
-| **D5** | A2A 활성화 시점 | **Phase 4** (Incident caller 도입 시점) | (a) Phase 3 포함 / (c) Phase 3 dormant (env flag) | caller 가 없는 활성화는 dead code. Phase 3 PR 영향 범위 격리 (Cognito stack 미터치). plan_summary 의 "Phase 3: + A2A 서버 승격" 은 "준비 가능 단계 진입" 으로 재해석 |
+| **D5** | A2A 활성화 시점 | **Phase 6a** (Supervisor caller 도입 시점, server + caller 통합) | (a) Phase 3 포함 / (b) Phase 4 server-side만 / (c) Phase 3 dormant | caller 가 없는 활성화는 dead code. resource.md §1 line 13-14 의 "RemoteA2aAgent 패턴은 Phase 6a Supervisor 변환 시 핵심 참조" 약속 준수. Phase 4 는 sequential CLI invoke 로 multi-agent 시연 (phase4.md §5 참조). **2026-05-07 phase4.md design 시 Phase 4 → Phase 6a 로 재이월** |
 | **D6** | AgentCore Memory | **보류** (Phase 4+) | (a) Phase 3 포함 / (c) dormant | D4 (no session) + D5 (no A2A) 와 일관 — Phase 3 = transition only. plan_summary §171 "Phase 4~5 에서 결정" 약속 준수. P3-A3 결정성 (stateless) |
 | **D7** | OTEL 관측성 | **포함** — `aws-opentelemetry-distro` + `opentelemetry-instrument` CMD + env (`OTEL_RESOURCE_ATTRIBUTES`, `AGENT_OBSERVABILITY_ENABLED`) | (b) skip / (c) flag toggle | plan_summary §159 "거의 공짜". dba/A2A 둘 다 동일 패턴. CloudWatch GenAI Observability 콘솔에 자동 표시 → workshop visual deliverable |
 | **D8** | C1 검증 (P3-A3) | **JSON schema-level diff** — 4 assertion (diagnoses.type set / .alarm set / real_alarms set / pct ±10) × 3 runs | (b) byte diff / (c) golden file / (d) tool seq / (e) hybrid | LLM 비결정성 흡수 + 결정 동일성 검증. plan_summary §220-235 의 진단 출력 스키마가 자연 비교 단위. golden file 유지비 회피 |
@@ -1038,7 +1038,7 @@ Phase 3 의 IAM Role 에 의도적으로 **부착하지 않는** 권한:
 
 | Phase | 추가 가능성 |
 |---|---|
-| Phase 4 | Incident Runtime 의 별 Role — Phase 3 와 동일 패턴 (`Phase4IncidentRuntimeExtras`). A2A 활성화 시 Cognito Client B token 발급 권한 추가 |
+| Phase 4 | Incident Runtime 의 별 Role — Phase 3 와 동일 패턴 (`Phase4IncidentRuntimeExtras`). A2A 미활성화 — Cognito Client B 권한 불필요 (Phase 6a 로 이월) |
 | Phase 4+ Memory | `MemoryAccess` 권한 추가 (D6 보류 풀릴 시) |
 | Phase 5 NL Policy | Policy enforcement 권한 — `bedrock-agentcore:GetAgentPolicy`, ... |
 | Phase 6 Supervisor | Supervisor Runtime 의 Role — Sub-agent invoke 권한 (`bedrock-agentcore:InvokeAgentRuntime`) |
@@ -2049,24 +2049,24 @@ git diff main..HEAD --name-only --diff-filter=M
 
 ## 11. Transition diff 예고 (Phase 3 → Phase 4)
 
-Phase 3 의 deferred 결정 (D5 A2A, D6 Memory) + Phase 4 의 신규 자원 (Incident Agent) 이 합쳐지는 시점. Phase 4 design doc 의 prereq.
+Phase 3 의 deferred 결정 (D6 Memory) + Phase 4 의 신규 자원 (Incident Agent + GitHub storage) 이 합쳐지는 시점. **D5 (A2A) 는 phase4.md design 시 Phase 6a 로 재이월 — 2026-05-07**. Phase 4 design doc (`docs/design/phase4.md`) 가 authoritative.
 
-### 11-1. Phase 4 핵심 변경 (예고)
+### 11-1. Phase 4 핵심 변경 (예고 — phase4.md 와 정렬)
 
 | 변경 | 출처 | Phase 4 분량 (예상) |
 |---|---|---|
-| **Incident Agent Runtime 추가** | plan_summary §134 (Phase 4 산출물) | 2nd Runtime — Phase 3 의 dba 패턴 재사용 (`agents/incident/runtime/`) |
-| **A2A 서버 활성화** | D5 deferred (Phase 4) | Monitor + Incident 둘 다 A2A AgentCard endpoint 노출. `agent_executor.py` 신규 (A2A 샘플 차용) |
-| **Cognito Client B 추가** | plan_summary §118 (Client B = Supervisor → Sub-agents) — 단, Phase 4 에서는 Caller 없으니 placeholder 생성만 | `aiops-demo-${DEMO_USER}-phase2-cognito` stack 의 update 또는 Phase 4 별 stack |
-| **A2A caller smoke test** | plan_summary §134 ("CLI → Monitor → Incident 순차 A2A 호출") | local 에서 Monitor → Incident 직접 호출 (Supervisor 는 Phase 6) |
-| **GitHub storage 도입** | plan_summary §82-85 + §134 의 Incident 가 GitHub `runbooks/`+`incidents/` read | GitHub Lambda + Gateway Target 추가 (Phase 2 의 history-mock Lambda 패턴 재사용) |
-| **`runbooks/` + `incidents/` 디렉토리 신규** | plan_summary §82 의 GitHub storage 구조 | 별 git repo (gonsoomoon-ml/aiops-multi-agent-demo) 또는 동일 repo 의 별 폴더 |
+| **Incident Agent Runtime 추가** | plan_summary §134 (Phase 4 산출물) | 2nd Runtime — Phase 3 의 dba 패턴 재사용 (`agents/incident/runtime/`), `@app.entrypoint` 그대로 |
+| **Sequential CLI invoke** | phase4.md §5 — A2A 대안 | `agents/monitor/runtime/invoke_runtime.py` 의 `--sequential` 모드 (boto3 SIGV4 Monitor → Incident) |
+| **GitHub storage 도입** | plan_summary §82-85 + §134 의 Incident 가 GitHub `runbooks/` read | GitHub Lambda + Gateway Target 추가 (Phase 2 의 history-mock Lambda 패턴 재사용) |
+| **`runbooks/` 디렉토리 신규** | plan_summary §82 | 동일 repo 의 `runbooks/payment-status-check.md` (phase4.md D4) |
+| ~~**A2A 서버 활성화**~~ | ~~D5 deferred (Phase 4)~~ → **Phase 6a 로 재이월** (resource.md §1 정렬) | (Phase 4 미수행) |
+| ~~**Cognito Client B 추가**~~ | ~~plan_summary §118 (Phase 4 placeholder)~~ → **Phase 6a 로 통합 이월** | (Phase 4 미수행 — A2A caller 와 함께) |
 
 ### 11-2. Phase 3 결정의 deferred 항목 vs Phase 4 본격 도입
 
 | Phase 3 결정 | deferred 시점 | Phase 4 에서의 결정 포인트 |
 |---|---|---|
-| **D5 — A2A 활성화** | Phase 4 — Incident caller 도입 시점 | Monitor / Incident 둘 다 A2A 서버화. AgentCard schema, `/.well-known/agent.json` endpoint, Cognito Client B authorization 패턴 |
+| **D5 — A2A 활성화** | **Phase 6a — Supervisor caller 도입 시점 (재이월 2026-05-07)** | Monitor / Incident / Change / Supervisor 모두 A2A 서버화 + Supervisor 가 RemoteA2aAgent caller. AgentCard schema, `/.well-known/agent-card.json` endpoint, Cognito Client A/B authorization 통합 도입. resource.md §1 line 13-14 약속 준수 |
 | **D6 — Memory** | Phase 4+ — cross-agent context 필요성 평가 | Monitor → Incident 호출 시 prior incident 추적 필요? incident 의 follow-up resolution 추적 필요? (cross-session memory) |
 | **§3-7 placeholder — local token 처리** | §7-6 에서 (a-2-i) 결정됨 (Phase 3 자체에서 close) | Phase 4 무관 |
 
@@ -2078,7 +2078,7 @@ Phase 3 의 deferred 결정 (D5 A2A, D6 Memory) + Phase 4 의 신규 자원 (Inc
 |---|---|
 | Phase 3 Monitor Role | **변경 없음** — Phase 3 이 만든 `Phase3RuntimeExtras` 그대로 |
 | Phase 4 Incident Role | **신규** — toolkit 자동 생성 + `Phase4IncidentRuntimeExtras` inline |
-| Phase 4 의 A2A 활성화 시 | Monitor Role 에 추가 권한? — `bedrock-agentcore:GetResourceOauth2Token` 으로 Cognito Client B token 발급 가능. Phase 3 Role 에 이미 부착돼 있어 무변경 |
+| Phase 6a A2A 활성화 시 (재이월) | Monitor Role 에 추가 권한 — `bedrock-agentcore:GetResourceOauth2Token` 으로 Cognito Client B token 발급. Phase 3 Role 에 이미 부착돼 있어 무변경 |
 
 → **Phase 3 Role 은 Phase 4 PR 에서 미터치** (의도). PR 영향 범위 격리.
 
@@ -2101,7 +2101,7 @@ Phase 3 의 deferred 결정 (D5 A2A, D6 Memory) + Phase 4 의 신규 자원 (Inc
 
 # 변경 파일
 ~ agents/monitor/runtime/agentcore_runtime.py         # A2A executor 등록
-~ agents/monitor/runtime/deploy_runtime.py            # Cognito Client B token 발급 권한 추가 (선택)
+  (Phase 4 에선 Monitor Runtime 본문/deploy 미터치 — A2A 가 Phase 6a 로 이월)
 ~ docs/design/phase4.md                               # 신규 design doc
 
 # 삭제 파일
@@ -2129,7 +2129,7 @@ phase2 / phase3 의 acceptance 패턴 따라 — Phase 4 가 추가할 P4-A1~A5+
 | 1 | Strands + 3가지 진단 유형 (offline) |
 | 2 | + Gateway + MCP + Lambda Target + Cognito M2M (transitional) |
 | **3** | **+ AgentCore Runtime + OAuth2CredentialProvider + transition (helper 삭제)** |
-| 4 | + 2nd Runtime (Incident) + A2A protocol + GitHub storage + Cognito Client B |
+| 4 | + 2nd Runtime (Incident) + GitHub storage + sequential CLI (A2A 미도입) |
 | 5 | + AgentCore NL Policy (readonly enforcement) |
 | 6a | + 3rd Runtime (Change Light) + Supervisor (필수) + Cognito Client A |
 | 6b | + Workflow orchestrator (stretch, 비교 측정) |
@@ -2147,8 +2147,8 @@ phase2 / phase3 의 acceptance 패턴 따라 — Phase 4 가 추가할 P4-A1~A5+
 
 | 미포함 항목 | 도입 시점 | Phase 3 가 미루는 이유 |
 |---|---|---|
-| **A2A 서버 활성화** (Strands → A2A AgentCard endpoint) | Phase 4 (D5) | Caller (Incident agent) 가 Phase 4 에 도입됨. 활성화 후 검증할 대상 없으면 dead code |
-| **Cognito Client B** (Supervisor → Sub-agent 인증) | Phase 4 또는 Phase 6 | Caller 와 함께 도입 (premature 회피). 생성 자체는 Phase 4 에서 placeholder 가능 |
+| **A2A 서버 활성화** (Strands → A2A AgentCard endpoint) | **Phase 6a (D5 재이월 2026-05-07)** | resource.md §1 line 13-14 ("RemoteA2aAgent 패턴은 Phase 6a Supervisor 변환 시 핵심 참조") 와 정렬. Phase 4 는 sequential CLI 로 대체 (phase4.md §5) |
+| **Cognito Client B** (Supervisor → Sub-agent 인증) | **Phase 6a (재이월 2026-05-07)** | A2A caller (Supervisor) 와 함께 통합 도입. Phase 4 에서는 미사용 (sequential CLI 패턴 — phase4.md §5) |
 | **Cognito Client A** (운영자 CLI → Supervisor) | Phase 6 (Supervisor 도입 시) | Supervisor 자체가 Phase 6, Client A 도 같이 |
 | **AgentCore Memory** + Strands hooks | Phase 4+ (D6) | cross-agent context 필요성 평가 후. Phase 3 의 stateless 일관성 우선 |
 | **Incident Agent Runtime** | Phase 4 | plan_summary §134 — Phase 4 산출물 |
