@@ -1,27 +1,23 @@
-"""Gateway MCP client factory.
+"""Gateway MCP client factory — caller 가 token 명시.
 
-Phase 2: token helper 의존 (PHASE 2 ONLY).
-Phase 3: helper 제거 + AgentCore Identity 자동 주입으로 evolve.
+Runtime / Local 둘 다 token 획득 경로만 다르고, 본 함수는 단순히 ``Authorization: Bearer``
+header 로 주입한다. 환경 자동 감지 magic 을 두지 않아 흐름이 line-by-line 추적 가능.
 """
 from datetime import timedelta
 
 from mcp.client.streamable_http import streamablehttp_client
 from strands.tools.mcp.mcp_client import MCPClient
 
-from agents.monitor.shared.auth.cognito_token import (
-    get_gateway_access_token,  # PHASE 2 ONLY
-)
-from agents.monitor.shared.env_utils import require_env
+from .env_utils import require_env
 
 
-def create_mcp_client() -> MCPClient:
+def create_mcp_client(gateway_token: str) -> MCPClient:
     gateway_url = require_env("GATEWAY_URL")
 
     def _transport():
-        token = get_gateway_access_token()  # PHASE 2 ONLY
         return streamablehttp_client(
             url=gateway_url,
-            headers={"Authorization": f"Bearer {token}"},
+            headers={"Authorization": f"Bearer {gateway_token}"},
             timeout=timedelta(seconds=120),
         )
 

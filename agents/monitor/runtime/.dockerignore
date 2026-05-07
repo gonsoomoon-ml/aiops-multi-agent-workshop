@@ -1,0 +1,8 @@
+# Phase 3 build context exclusion (docker build context = agents/monitor/runtime/)
+__pycache__/
+*.pyc
+.pytest_cache/
+.env
+.bedrock_agentcore.yaml
+Dockerfile
+.dockerignore

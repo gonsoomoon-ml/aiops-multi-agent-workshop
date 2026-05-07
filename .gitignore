@@ -49,3 +49,8 @@ diagnosis/*.md
 infra/phase2/lambda/history_mock/mock_data/
 # Phase 2: cfn package output
 infra/phase2/cognito.packaged.yaml
+
+# Phase 3: deploy_runtime.py step [0] copies shared/ into build context (gitignored)
+agents/monitor/runtime/shared/
+# Phase 3: bedrock_agentcore_starter_toolkit auto-generates this config file
+agents/monitor/runtime/.bedrock_agentcore.yaml

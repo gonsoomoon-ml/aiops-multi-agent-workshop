@@ -13,21 +13,15 @@ import os
 from dotenv import load_dotenv
 
 from agents.monitor.shared.agent import create_agent
+from agents.monitor.shared.auth_local import get_local_gateway_token
 from agents.monitor.shared.mcp_client import create_mcp_client
+from agents.monitor.shared.modes import MODE_CONFIG
 
 QUERY_PAST = "지난 7일 alarm history를 분석해 3가지 진단 유형으로 제안하고, real alarm은 따로 나열해줘."
 QUERY_LIVE_TEMPLATE = (
     "현재 라이브 알람 (payment-{user}-* prefix) 의 상태와 classification 을 분석해, "
     "실제로 봐야 할 알람만 알려줘."
 )
-
-# Gateway 가 도구 이름을 "<target>___<tool>" 로 namespacing — target prefix 로 mode 분리.
-# (reference: A2A monitoring_strands_agent + ec-customer-support 둘 다 prompt 에 도구 이름
-#  명시 안 하고 capability 로 LLM 이 발견하도록 위임. 우리도 동일 패턴.)
-MODE_CONFIG = {
-    "past": ("history-mock___", "system_prompt_past.md"),
-    "live": ("cloudwatch-wrapper___", "system_prompt_live.md"),
-}
 
 DIM = "\033[2m"
 NC = "\033[0m"
@@ -69,7 +63,8 @@ async def _stream_response(agent, prompt: str) -> None:
 
 async def _amain(mode: str, query: str) -> None:
     target_prefix, prompt_filename = MODE_CONFIG[mode]
-    mcp_client = create_mcp_client()
+    gateway_token = get_local_gateway_token()
+    mcp_client = create_mcp_client(gateway_token=gateway_token)
     with mcp_client:  # Strands MCPClient 는 sync context manager
         all_tools = mcp_client.list_tools_sync()
         tools = [t for t in all_tools if t.tool_name.startswith(target_prefix)]
