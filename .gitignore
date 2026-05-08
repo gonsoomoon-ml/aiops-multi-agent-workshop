@@ -54,3 +54,11 @@ infra/phase2/cognito.packaged.yaml
 agents/monitor/runtime/shared/
 # Phase 3: bedrock_agentcore_starter_toolkit auto-generates this config file
 agents/monitor/runtime/.bedrock_agentcore.yaml
+
+# Phase 4: Incident deploy copies BOTH monitor/shared + incident/shared (Option A)
+agents/incident/runtime/shared/
+agents/incident/runtime/incident_shared/
+# Phase 4: bedrock_agentcore_starter_toolkit auto-generates this config file
+agents/incident/runtime/.bedrock_agentcore.yaml
+# Phase 4: cfn package output
+infra/phase4/github_lambda.packaged.yaml

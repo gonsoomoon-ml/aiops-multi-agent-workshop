@@ -1,0 +1,98 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: |
+  AIOps Multi-Agent Demo — Phase 4 (GitHub storage Lambda + cross-stack Gateway invoke).
+
+  Phase 2 cognito stack 미터치. Phase 2 의 GatewayIamRole 에 invoke 권한을 inline policy
+  로 추가 (cross-stack via Role name string). Phase 4 stack delete 시 Policy 만 제거,
+  Phase 2 Role 보존.
+
+  reference:
+    - docs/design/phase4.md §4 (GitHub storage 상세)
+    - phase4_design_pivots.md (cross-stack Lambda Permission 패턴)
+
+Parameters:
+  DemoUser:
+    Type: String
+    Description: 워크샵 청중 prefix (영문/숫자/하이픈, ≤16자)
+    AllowedPattern: "^[a-zA-Z0-9-]{1,16}$"
+
+  GithubTokenSsmPath:
+    Type: String
+    Default: /aiops-demo/github-token
+    Description: GitHub PAT 가 저장된 SSM Parameter Store path (SecureString)
+
+  GithubRepo:
+    Type: String
+    Default: gonsoomoon-ml/aiops-multi-agent-demo
+    Description: runbooks 가 들어있는 GitHub repository (`owner/repo`)
+
+  GithubBranch:
+    Type: String
+    Default: main
+    Description: GitHub 브랜치 — fork 사용 시 변경
+
+Resources:
+  # === Lambda IAM Role ================================================
+  GithubStorageLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "aiops-demo-${DemoUser}-github-storage-role"
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: SsmReadGithubToken
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: ssm:GetParameter
+                Resource: !Sub "arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter${GithubTokenSsmPath}"
+
+  # === Lambda Function ================================================
+  GithubStorageLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub "aiops-demo-${DemoUser}-github-storage"
+      Runtime: python3.13
+      Handler: handler.lambda_handler
+      Code: ./lambda_src/github_storage
+      Role: !GetAtt GithubStorageLambdaRole.Arn
+      Timeout: 15
+      MemorySize: 256
+      Environment:
+        Variables:
+          GITHUB_TOKEN_SSM_PATH: !Ref GithubTokenSsmPath
+          GITHUB_REPO: !Ref GithubRepo
+          GITHUB_BRANCH: !Ref GithubBranch
+          DEMO_USER: !Ref DemoUser    # alarm_name → alarm_class 변환 (handler 의 _alarm_class)
+
+  # === Cross-stack Lambda invoke Permission (phase4_design_pivots.md) ===
+  # Phase 2 의 GatewayIamRole 에 GithubStorageLambda invoke 권한 inline 추가.
+  # Phase 2 stack 미터치. Phase 4 stack 삭제 시 Policy 만 제거, Phase 2 Role 보존.
+  GatewayInvokeGithubLambdaPolicy:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyName: !Sub "aiops-demo-${DemoUser}-phase4-gateway-invoke-github"
+      Roles:
+        - !Sub "aiops-demo-${DemoUser}-phase2-gateway-role"   # Phase 2 cognito.yaml 의 GatewayIamRole 이름
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Action: lambda:InvokeFunction
+            Resource: !GetAtt GithubStorageLambda.Arn
+
+Outputs:
+  GithubStorageLambdaArn:
+    Description: GitHub storage Lambda ARN — setup_github_target.py 가 read
+    Value: !GetAtt GithubStorageLambda.Arn
+  GithubStorageLambdaName:
+    Description: Lambda 함수 이름
+    Value: !Ref GithubStorageLambda
