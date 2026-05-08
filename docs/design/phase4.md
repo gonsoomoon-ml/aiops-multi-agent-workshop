@@ -792,13 +792,22 @@ Phase 4 design 은 RemoteA2aAgent (caller) 와 A2A server-side 를 모두 Phase 
 
 ### 6-1. P4-A1 ~ A5
 
-| # | 검증 항목 | 검증 방법 |
-|---|---|---|
-| **P4-A1** | Phase 3 회귀 없음 | Phase 3 의 P3-A1 ~ A6 전체 재실행 (Monitor invoke 단독 + GitHub Lambda 무관 시나리오). Phase 3 자원 미터치 검증 |
-| **P4-A2** | Incident Runtime 단일 invoke 동작 | `uv run agents/incident/runtime/invoke_runtime.py --alarm payment-ubuntu-status-check` → JSON 응답 (`runbook_found: true`) |
-| **P4-A3** | Sequential CLI invoke 통합 응답 | `uv run agents/monitor/runtime/invoke_runtime.py --mode live --sequential` → 응답 schema 가 §5-3 형식 (monitor + incident_responses[] 배열, real_alarms 1건 이상에 대해 incident 호출 흔적) |
-| **P4-A4** | GitHub Lambda runbook read 성공 | A3 의 응답 `incident_responses[].recommended_actions` 에 `reboot` 또는 `escalate` 1개 이상 포함 (runbook content 가 LLM 응답에 반영됨) |
-| **P4-A5** | Phase 4 teardown 후 Phase 3 자원 보존 | `infra/phase4/teardown.sh` + `agents/incident/runtime/teardown.sh` 후 — Monitor Runtime / Gateway / Cognito 그대로 |
+| # | 검증 항목 | 검증 방법 | 상태 (2026-05-08) |
+|---|---|---|---|
+| **P4-A1** | Phase 3 회귀 없음 | Phase 3 의 P3-A1 ~ A6 전체 재실행 (Monitor invoke 단독 + GitHub Lambda 무관 시나리오). Phase 3 자원 미터치 검증 | ✅ Phase 4 deploy 통과, Phase 2 stack / Gateway / Monitor Runtime 모두 보존 |
+| **P4-A2** | Incident Runtime 단일 invoke 동작 | `uv run agents/incident/runtime/invoke_runtime.py --alarm payment-ubuntu-status-check` → JSON 응답 (`runbook_found: true`) | ✅ status-check (P1) + noisy-cpu (P2 fallback) 양쪽 정상 응답 |
+| **P4-A3** | Sequential CLI invoke 통합 응답 | `uv run agents/monitor/runtime/invoke_runtime.py --mode live --sequential` → 응답 schema 가 §5-3 형식 (monitor + incident_responses[] 배열, real_alarms 1건 이상에 대해 incident 호출 흔적) | ⏸ **이월 — Step D 미구현, Phase 6a Supervisor + A2A 와 통합 검증** (D5 정렬) |
+| **P4-A4** | GitHub Lambda runbook read 성공 | A3 의 응답 `incident_responses[].recommended_actions` 에 `reboot` 또는 `escalate` 1개 이상 포함 (runbook content 가 LLM 응답에 반영됨) | ✅ Step D 미구현 우회 — Incident 단독 invoke 응답으로 동등 검증. status-check 응답에 `reboot instance` + `escalate to oncall` 모두 포함, runbook 의 진단 절차 / 권장 조치 / Severity 일치 |
+| **P4-A5** | Phase 4 teardown 후 Phase 3 자원 보존 | `infra/phase4/teardown.sh` + `agents/incident/runtime/teardown.sh` 후 — Monitor Runtime / Gateway / Cognito 그대로 | ⏸ pending — 다음 자원 정리 시점에 실측 (review fix A2 fallback discovery / B2 inline policy detach 검증 동반) |
+
+### 6-1-1. 구현 commit 추적 (2026-05-08)
+
+| commit | 범위 |
+|---|---|
+| `feab3d2` | Step B (`agents/incident/`) + Step C (`infra/phase4/`) 본체 + 구현 중 review fix 5건 (handler `_alarm_class` split-based, setup_github_target update 분기, tool description 정확화, teardown `list-gateways` fallback, teardown inline policy detach 검증) + system_prompt Korean diagnosis 강제 규칙 |
+| `580aca5` | Step E partial — `runbooks/payment-status-check.md` (P4-A4 fetch 대상) |
+
+→ Step D (sequential CLI) 미구현은 **D5 (A2A 활성화 Phase 6a 이월)** 결정과 일관. Phase 6a 에서 Supervisor + A2A 도입 시 sequential CLI 도 함께 진화 (§7-2 Reference codebase 매핑 참조).
 
 ### 6-2. smoke test 절차 (요약)
 
