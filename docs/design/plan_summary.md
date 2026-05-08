@@ -132,8 +132,8 @@ T+8m     Orchestrator — 종합 → 진단 리포트 자동 commit + 권고 액
 | 2     | Gateway + MCP로 도구 외부화 (CloudWatch native + GitHub) + 라이브 alarm 분류 검증  |
 | 3     | Monitor → AgentCore Runtime + A2A 서버 승격                                |
 | 4     | Incident Agent + GitHub storage Lambda + sequential CLI (A2A는 6a 통합 이월) |
-| 5     | AgentCore Policy 적용 (NL Policy readonly) + 거부 시연 스크립트                  |
-| 6a    | Change Agent (Light) + Supervisor Orchestrator + A2A 활성화 (server+caller 동시) |
+| 5     | ~~AgentCore Policy 적용 (NL Policy readonly) + 거부 시연 스크립트~~ — **본 프로젝트 scope 제외** (Strands+AgentCore 학습량 우선) |
+| 6a    | Supervisor + Change Agent + A2A 활성화 (server+caller) + Cognito Client A/B + deployments-storage Lambda + Operator CLI |
 | 6b    | (stretch) Workflow Orchestrator + Workflow vs Supervisor 비교 측정           |
 | 7     | EC mall 통합 — alarm 확장만으로 동일 시나리오 재현 (외부 의존: 동료 EC mall 완료)         |
 
