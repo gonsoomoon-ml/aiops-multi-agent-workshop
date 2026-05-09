@@ -12,7 +12,7 @@ Phase 4 `agents/monitor/` 의 **A2A protocol 변형**. workshop 청중이 두 �
 | Caller | sequential CLI / 운영자 직접 | Supervisor `@tool call_monitor_a2a` |
 | AgentCard | 없음 | `.well-known/agent-card.json` 자동 도출 (Strands `agent.tool_registry`) |
 
-`shared/` 는 Phase 4 monitor/shared/ 와 **완전 동일** (full copy) — `agent.py`, `mcp_client.py`, `auth_local.py`, `env_utils.py`, `modes.py`, `prompts/`, `tools/`. preservation rule 에 따라 Phase 4 모듈이 변경되어도 Phase 6a 코드 영향 없음.
+`shared/` 는 **monitor_a2a 자체에 없음** — Phase 4 `agents/monitor/shared/` 를 직접 재사용 (Option G — 2026-05-09 review). monitor_a2a 디렉토리에는 `runtime/` 만 존재 — 청중에게 **"Phase 4 monitor 위에 A2A wrap 만 추가"** 메시지 명확. preservation rule 정합 (Phase 4 read-only — 수정 0, import + build context copy 만).
 
 ## 사전 조건
 

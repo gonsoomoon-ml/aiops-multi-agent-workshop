@@ -15,6 +15,8 @@
 > **Change Agent 연기 (2026-05-09 review)**: 사용자 결정 — Change Agent (D6) 는 **후속 phase 로 연기**. Phase 6a 는 *A2A activation* 한 가지 핵심 메시지에 집중. 영향: D5/D6 폐기 (deployments-storage Lambda + Target 삭제); §4 (Change Agent), §7 (deployments-storage Lambda) 무효화; sub-agent 3 → 2 (monitor_a2a + incident_a2a 만); `agents/change/`, `infra/phase6a/`, `deployments/`, `incidents/` 4 디렉토리 삭제; Phase 6a 의 infra/ stack 0 (Phase 0/2/3/4 자원만 사용). 약 -1100 LoC 추가 단순화. Change + write tool + per-agent 모델 분리는 Phase 6b (또는 별 phase) 단독 주제로 배치.
 >
 > **Operator CLI 통합 (2026-05-09 review)**: 사용자 결정 — Option X 후 `agents/operator/cli.py` 와 `agents/supervisor/runtime/invoke_runtime.py` 가 둘 다 SigV4 IAM 으로 95% 코드 중복. **`agents/operator/` 디렉토리 삭제**, `agents/supervisor/runtime/invoke_runtime.py` 가 Operator + admin 통합 진입점. §8 (Operator CLI 상세) 무효화. Phase 4 pattern (각 agent 자기 invoke_runtime.py) 와 정합.
+>
+> **Option G — Phase 4 shared/ 직접 재사용 (2026-05-09 review)**: 사용자 결정 — `agents/monitor_a2a/shared/` + `agents/incident_a2a/shared/` 가 Phase 4 와 100% 동일 copy → 청중 인지 부하만 추가. **두 디렉토리 삭제**, `monitor_a2a/runtime/` + `incident_a2a/runtime/` 의 import 와 build context 모두 Phase 4 `agents/monitor/shared/` + `agents/incident/shared/` 직접 재사용. 영향: §2-3 의 monitor_a2a/incident_a2a shared/** 행 무효화; ~590 LoC 단순화; phase-by-phase 메시지 ("Phase 4 위에 A2A wrap 만 추가") 명확화. preservation rule 정합 (Phase 4 read-only — 수정 0, import + build context copy).
 
 ---
 

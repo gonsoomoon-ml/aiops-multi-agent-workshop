@@ -14,9 +14,10 @@ Phase 4 incident 와의 차이:
   - **payload schema** — A2A `message/send` 의 user message text 가 그대로 입력.
     Phase 4 의 `{"alarm_name": "..."}` 와 호환되도록 system_prompt 가 처리.
 
-helper (auth_local, mcp_client, env_utils) 는 monitor_a2a/shared 직접 import — Phase 4
-incident 가 monitor/shared 를 사용하는 패턴 그대로지만 격리된 monitor_a2a/shared 사용
-(preservation rule). caller 측 build context Option A 로 deploy 시 둘 다 복사.
+helper (auth_local, mcp_client, env_utils) 는 **Phase 4 monitor/shared** 직접 재사용 +
+truth (`agent.py + prompts/`) 는 **Phase 4 incident/shared** 직접 재사용 (Option G —
+2026-05-09 review). incident_a2a 자체에 shared/ 없음, runtime/ 만 보유. caller 측 build
+context Option A 로 deploy 시 두 Phase 4 디렉토리 모두 copy.
 
 reference:
     - phase4.md §3 (Incident Agent — payload + tool 흐름 carry-over)
@@ -33,20 +34,22 @@ from strands.multiagent.a2a import A2AServer
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 
-# 로컬 dev 시 sibling 디렉토리 sys.path 추가. 컨테이너 안에서는 cwd 자동.
-# - 컨테이너: /app/shared (monitor_a2a helper) + /app/incident_shared (incident_a2a truth)
-# - 로컬: agents/monitor_a2a/shared + agents/incident_a2a/shared
-if (SCRIPT_DIR.parent / "shared").is_dir():
-    sys.path.insert(0, str(SCRIPT_DIR.parents[2]))   # PROJECT_ROOT for `agents.X.shared.Y`
+# Phase 4 monitor/shared (helper) + incident/shared (truth) 를 직접 재사용 (Option G).
+# 컨테이너: deploy_runtime.py 가 두 디렉토리를 runtime/ 에 copy.
+# 로컬 dev: agents.monitor.shared + agents.incident.shared 직접 import (Phase 4).
+if (SCRIPT_DIR / "shared").is_dir():
+    sys.path.insert(0, str(SCRIPT_DIR))                # /app/shared + /app/incident_shared
+else:
+    sys.path.insert(0, str(SCRIPT_DIR.parents[2]))     # PROJECT_ROOT for agents.* import
 
 try:
     # 컨테이너 (build context flatten 후): /app/shared + /app/incident_shared
-    from shared.mcp_client import create_mcp_client                       # monitor_a2a helper
-    from incident_shared.agent import create_agent                         # incident_a2a truth
+    from shared.mcp_client import create_mcp_client                       # Phase 4 monitor helper
+    from incident_shared.agent import create_agent                         # Phase 4 incident truth
 except ModuleNotFoundError:
-    # 로컬 dev — sys.path 에 PROJECT_ROOT 가 추가됨
-    from agents.monitor_a2a.shared.mcp_client import create_mcp_client     # noqa: E402
-    from agents.incident_a2a.shared.agent import create_agent              # noqa: E402
+    # 로컬 dev — Phase 4 디렉토리 직접 사용
+    from agents.monitor.shared.mcp_client import create_mcp_client         # noqa: E402
+    from agents.incident.shared.agent import create_agent                  # noqa: E402
 
 OAUTH_PROVIDER_NAME = os.environ["OAUTH_PROVIDER_NAME"]
 COGNITO_GATEWAY_SCOPE = os.environ["COGNITO_GATEWAY_SCOPE"]

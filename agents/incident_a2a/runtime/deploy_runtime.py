@@ -5,7 +5,9 @@ deploy_runtime.py — Phase 6a Incident A2A AgentCore Runtime 배포
 Phase 4 ``agents/incident/runtime/deploy_runtime.py`` 와 동일 5-step 흐름. 차이점:
   - **agent_name = ``aiops_demo_${DEMO_USER}_incident_a2a``** (Phase 4 incident 와 별 Runtime)
   - **protocol="A2A"** + customJWTAuthorizer (allowedClients=[Client C] — Option X, Phase 2 재사용)
-  - Build context Option A: monitor_a2a/shared (helper) + incident_a2a/shared (truth) 모두 copy
+  - Build context Option A: **Phase 4 monitor/shared (helper) + Phase 4 incident/shared
+    (truth)** 모두 copy. incident_a2a 자체에 shared/ 없음, runtime/ 만 보유 (Option G —
+    2026-05-09 review). 청중에게 "Phase 4 의 incident 위에 A2A wrap 만 추가" 메시지 명확.
   - IAM inline policy: ``Phase6aIncidentA2aRuntimeExtras``
 
 사용법:
@@ -13,7 +15,7 @@ Phase 4 ``agents/incident/runtime/deploy_runtime.py`` 와 동일 5-step 흐름. 
 
 사전 조건:
     - Phase 0/2/3/4 deploy 완료 (Phase 2 산출물 COGNITO_CLIENT_C_ID 가 .env 에 존재)
-    - agents/monitor_a2a/shared/ 존재 (build context helper 출처)
+    - Phase 4 monitor/shared + incident/shared 존재 (build context source)
     - (Phase 6a Option X — 새 Cognito 자원 추가 0)
 """
 import json
@@ -47,35 +49,37 @@ OAUTH_PROVIDER_NAME = f"{AGENT_NAME}_gateway_provider"
 
 
 def copy_shared_into_build_context() -> None:
-    """[1/5] monitor_a2a/shared (helper) + incident_a2a/shared (truth) → build context.
+    """[1/5] Phase 4 monitor/shared (helper) + incident/shared (truth) → build context (Option G).
+
+    incident_a2a 자체에 shared/ 없음 — Phase 4 의 두 디렉토리가 single source of truth.
 
     컨테이너 layout (`/app/`):
-      shared/             ← monitor_a2a/shared (helper)
-      incident_shared/    ← incident_a2a/shared (agent.py + prompts/)
+      shared/             ← Phase 4 monitor/shared (helper)
+      incident_shared/    ← Phase 4 incident/shared (agent.py + prompts/)
     """
-    print(f"{YELLOW}[1/5] shared/ × 2 를 빌드 컨텍스트로 복사 중...{NC}")
+    print(f"{YELLOW}[1/5] Phase 4 shared/ × 2 를 빌드 컨텍스트로 복사 중...{NC}")
 
-    monitor_a2a_src = PROJECT_ROOT / "agents" / "monitor_a2a" / "shared"
-    incident_a2a_src = PROJECT_ROOT / "agents" / "incident_a2a" / "shared"
+    monitor_src = PROJECT_ROOT / "agents" / "monitor" / "shared"
+    incident_src = PROJECT_ROOT / "agents" / "incident" / "shared"
 
-    if not monitor_a2a_src.exists():
-        print(f"{RED}❌ monitor_a2a/shared 미발견 — Phase 6a Step B2 monitor_a2a 선행 필요{NC}")
+    if not monitor_src.exists():
+        print(f"{RED}❌ Phase 4 monitor/shared 미발견 — Phase 4 deploy 선행 필요{NC}")
         sys.exit(1)
-    if not incident_a2a_src.exists():
-        print(f"{RED}❌ incident_a2a/shared 미발견{NC}")
+    if not incident_src.exists():
+        print(f"{RED}❌ Phase 4 incident/shared 미발견 — Phase 4 deploy 선행 필요{NC}")
         sys.exit(1)
 
     shared_dst = SCRIPT_DIR / "shared"
     if shared_dst.exists():
         shutil.rmtree(shared_dst)
-    shutil.copytree(monitor_a2a_src, shared_dst, ignore=shutil.ignore_patterns("__pycache__"))
-    print(f"{GREEN}  ✅ monitor_a2a/shared → runtime/shared/{NC}")
+    shutil.copytree(monitor_src, shared_dst, ignore=shutil.ignore_patterns("__pycache__"))
+    print(f"{GREEN}  ✅ agents/monitor/shared → runtime/shared/ (Phase 4 helper 직접 재사용){NC}")
 
     incident_dst = SCRIPT_DIR / "incident_shared"
     if incident_dst.exists():
         shutil.rmtree(incident_dst)
-    shutil.copytree(incident_a2a_src, incident_dst, ignore=shutil.ignore_patterns("__pycache__"))
-    print(f"{GREEN}  ✅ incident_a2a/shared → runtime/incident_shared/{NC}\n")
+    shutil.copytree(incident_src, incident_dst, ignore=shutil.ignore_patterns("__pycache__"))
+    print(f"{GREEN}  ✅ agents/incident/shared → runtime/incident_shared/ (Phase 4 truth 직접 재사용){NC}\n")
 
 
 def configure_runtime():

@@ -43,13 +43,22 @@ from strands.multiagent.a2a import A2AServer
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 
-# 로컬 dev 시 sibling shared/ — sys.path 에 parent 추가. 컨테이너에선 cwd (/app) 자동.
-if (SCRIPT_DIR.parent / "shared").is_dir():
-    sys.path.insert(0, str(SCRIPT_DIR.parent))
+# Phase 4 monitor/shared/ 를 직접 재사용 (Option G — 2026-05-09 review).
+# 컨테이너: deploy_runtime.py 가 agents/monitor/shared 를 runtime/shared 로 copy.
+# 로컬 dev: agents.monitor.shared.* 직접 import (Phase 4 truth).
+if (SCRIPT_DIR / "shared").is_dir():
+    sys.path.insert(0, str(SCRIPT_DIR))
 
-from shared.agent import create_agent          # noqa: E402
-from shared.mcp_client import create_mcp_client  # noqa: E402
-from shared.modes import MODE_CONFIG             # noqa: E402
+try:
+    # 컨테이너 (build context flatten 후): /app/shared
+    from shared.agent import create_agent          # noqa: E402
+    from shared.mcp_client import create_mcp_client  # noqa: E402
+    from shared.modes import MODE_CONFIG             # noqa: E402
+except ModuleNotFoundError:
+    # 로컬 dev — Phase 4 monitor/shared 직접 사용
+    from agents.monitor.shared.agent import create_agent          # noqa: E402
+    from agents.monitor.shared.mcp_client import create_mcp_client  # noqa: E402
+    from agents.monitor.shared.modes import MODE_CONFIG             # noqa: E402
 
 OAUTH_PROVIDER_NAME = os.environ["OAUTH_PROVIDER_NAME"]
 COGNITO_GATEWAY_SCOPE = os.environ["COGNITO_GATEWAY_SCOPE"]
