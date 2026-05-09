@@ -1,20 +1,31 @@
 #!/usr/bin/env python3
 """
-invoke_runtime.py — Phase 6a Supervisor admin invoke (단독 디버깅용 SIGV4 호출)
+invoke_runtime.py — Phase 6a Supervisor 호출 진입점 (SigV4 IAM)
 
-Phase 6a Option X 에서 Supervisor 는 **customJWTAuthorizer 미설정 = SigV4 default** —
-본 스크립트도 정상 경로의 simplified version. agents/operator/cli.py 와 동일한 SigV4
-인증을 admin 친화 형식으로 노출 (CLI args, 별 default query 등).
+워크샵 청중 (운영자) + admin 통합 진입점. Phase 4 의 monitor/incident
+``invoke_runtime.py`` 와 동일 패턴 — SigV4 IAM 자동 서명. Phase 6a Option X 에서
+Supervisor 는 customJWTAuthorizer 미설정 → SigV4 default 로 정상 동작.
 
-정상 경로:
-    `python agents/operator/cli.py --query "..."` — Operator CLI (Phase 6a Step D).
+호출 흐름:
+  1. AWS 자격증명 (`aws configure`)
+  2. boto3 ``invoke_agent_runtime`` (SigV4 자동 서명)
+  3. SSE 스트림 stdout — Supervisor 가 sub-agent 들 호출하며 stream
 
-사용법 (admin 디버깅 only — authorizer 비활성화 상태에서):
+Phase 4 의 ``agents/{monitor,incident}/runtime/invoke_runtime.py`` 와 다른 점:
+  - **payload 스키마**: ``{"query": "<자연어 운영자 질의>"}`` (Monitor 의 mode + Incident 의 alarm_name 통합)
+  - **응답 형식**: Supervisor 가 만든 통합 JSON (system_prompt schema) — 코드 측 해석 불필요
+
+사용법:
     uv run agents/supervisor/runtime/invoke_runtime.py --query "현재 상황 진단해줘"
+    uv run agents/supervisor/runtime/invoke_runtime.py --query "alarm payment-ubuntu-status-check 진단"
 
 사전 조건:
     - deploy_runtime.py 실행 완료 (runtime/.env 에 RUNTIME_ARN)
-    - Runtime authorizer 임시 제거 (또는 IAM 호출 권한 있는 admin user)
+    - AWS 자격증명 + 사용자 IAM Role 에 ``bedrock-agentcore:InvokeAgentRuntime`` 권한
+
+reference:
+    - docs/design/phase6a.md §8 (Operator 진입점)
+    - agents/incident/runtime/invoke_runtime.py (Phase 4 SigV4 invoke 패턴)
 """
 import argparse
 import json
@@ -39,7 +50,8 @@ GREEN, YELLOW, BLUE, RED, DIM, NC = (
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Phase 6a Supervisor admin invoke")
+    """CLI 인자 — `--query <자연어 운영자 질의>`."""
+    parser = argparse.ArgumentParser(description="Phase 6a Supervisor admin invoke (SigV4)")
     parser.add_argument(
         "--query",
         default="현재 상황 진단해줘",
@@ -49,6 +61,7 @@ def parse_args() -> argparse.Namespace:
 
 
 def parse_sse_event(line_bytes: bytes) -> dict | None:
+    """SSE ``data: {...}`` 라인을 dict 로 파싱."""
     if not line_bytes:
         return None
     try:
@@ -67,12 +80,10 @@ def main() -> None:
         sys.exit(1)
 
     print(f"{BLUE}{'=' * 60}{NC}")
-    print(f"  Phase 6a Supervisor invoke")
+    print(f"  Phase 6a Operator → Supervisor (SigV4)")
     print(f"  Query: {args.query}")
     print(f"  Runtime ARN: {RUNTIME_ARN}")
-    print(f"{BLUE}{'=' * 60}{NC}")
-    print(f"{YELLOW}⚠️  본 스크립트는 SIGV4 — Runtime 의 customJWTAuthorizer 가 활성화된 상태에선{NC}")
-    print(f"{YELLOW}    401 반환. 정상 경로는 Operator CLI (Phase 6a Step D).{NC}\n")
+    print(f"{BLUE}{'=' * 60}{NC}\n")
 
     config = Config(connect_timeout=300, read_timeout=600, retries={"max_attempts": 0})
     client = boto3.client("bedrock-agentcore", region_name=REGION, config=config)
@@ -104,7 +115,9 @@ def main() -> None:
             print(
                 f"{DIM}📊 Tokens — Total: {usage_summary.get('totalTokens', 0):,} | "
                 f"Input: {usage_summary.get('inputTokens', 0):,} | "
-                f"Output: {usage_summary.get('outputTokens', 0):,}{NC}"
+                f"Output: {usage_summary.get('outputTokens', 0):,} | "
+                f"Cache R/W: {usage_summary.get('cacheReadInputTokens', 0):,}/"
+                f"{usage_summary.get('cacheWriteInputTokens', 0):,}{NC}"
             )
     else:
         body = response["response"].read().decode("utf-8")

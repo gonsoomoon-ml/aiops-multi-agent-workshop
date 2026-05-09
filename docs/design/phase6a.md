@@ -13,6 +13,8 @@
 > **Option X (2026-05-09 review)**: 사용자 결정 — **새 Cognito 자원 추가 0**. Phase 2 의 Client C 만 재사용 (sub-agent A2A inbound + Supervisor outbound 모두). Operator CLI 는 Phase 4 패턴 SigV4 IAM 그대로. AgentCore `customJWTAuthorizer.allowedClients` 가 토큰의 `aud` (= client_id) 만 검증, scope 미검증 → Gateway scope 토큰이 multiple audience 에 통과. 영향: D3, D4 폐기 (Cognito Client A/B 제거); §6 단순화 (`cognito_extras.yaml` 삭제); §8 단순화 (Operator CLI 가 boto3 SigV4); §2-1 인벤토리 -7 자원 (Cognito Client A + B + ResourceServer + OperatorUser + 2 OAuth provider variant). 약 -325 LoC 단순화.
 >
 > **Change Agent 연기 (2026-05-09 review)**: 사용자 결정 — Change Agent (D6) 는 **후속 phase 로 연기**. Phase 6a 는 *A2A activation* 한 가지 핵심 메시지에 집중. 영향: D5/D6 폐기 (deployments-storage Lambda + Target 삭제); §4 (Change Agent), §7 (deployments-storage Lambda) 무효화; sub-agent 3 → 2 (monitor_a2a + incident_a2a 만); `agents/change/`, `infra/phase6a/`, `deployments/`, `incidents/` 4 디렉토리 삭제; Phase 6a 의 infra/ stack 0 (Phase 0/2/3/4 자원만 사용). 약 -1100 LoC 추가 단순화. Change + write tool + per-agent 모델 분리는 Phase 6b (또는 별 phase) 단독 주제로 배치.
+>
+> **Operator CLI 통합 (2026-05-09 review)**: 사용자 결정 — Option X 후 `agents/operator/cli.py` 와 `agents/supervisor/runtime/invoke_runtime.py` 가 둘 다 SigV4 IAM 으로 95% 코드 중복. **`agents/operator/` 디렉토리 삭제**, `agents/supervisor/runtime/invoke_runtime.py` 가 Operator + admin 통합 진입점. §8 (Operator CLI 상세) 무효화. Phase 4 pattern (각 agent 자기 invoke_runtime.py) 와 정합.
 
 ---
 

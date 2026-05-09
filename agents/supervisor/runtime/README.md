@@ -11,9 +11,9 @@ agents/supervisor/
 │   └── prompts/
 │       └── system_prompt.md  # 한국어 — sub-agent 호출 정책 + JSON 응답 schema
 └── runtime/
-    ├── agentcore_runtime.py  # @app.entrypoint (HTTP) + @tool × 3 wrapping a2a.client
-    ├── deploy_runtime.py     # toolkit configure(protocol="HTTP") + Cognito Client A authorizer
-    ├── invoke_runtime.py     # admin SIGV4 디버깅 (정상 경로는 Operator CLI)
+    ├── agentcore_runtime.py  # @app.entrypoint (HTTP) + @tool × 2 wrapping a2a.client
+    ├── deploy_runtime.py     # toolkit configure(protocol="HTTP") — no authorizer (SigV4 default)
+    ├── invoke_runtime.py     # Operator 호출 진입점 (SigV4 IAM)
     ├── teardown.sh           # reverse 6단계 + sub-agent 보존 검증
     ├── requirements.txt
     └── Dockerfile            # EXPOSE 8080
@@ -21,7 +21,7 @@ agents/supervisor/
 
 ## 핵심 패턴 — Strands `sub_agents` 미지원의 회피
 
-Strands `Agent.__init__` 에 `sub_agents=` 파라미터가 **없음** (research 확인). 대신 sub-agent 를 *도구로 노출* — `@tool` 함수 3개가 a2a.client.A2AClient 호출을 wrap:
+Strands `Agent.__init__` 에 `sub_agents=` 파라미터가 **없음** (research 확인). 대신 sub-agent 를 *도구로 노출* — `@tool` 함수 2개가 a2a.client.A2AClient 호출을 wrap:
 
 ```python
 @tool
@@ -67,7 +67,7 @@ uv run agents/supervisor/runtime/deploy_runtime.py
 
 6단계:
 1. supervisor/shared → 빌드 컨텍스트 복사
-2. sub-agent ARN cross-load (3개의 runtime/.env)
+2. sub-agent ARN cross-load (2개의 runtime/.env — monitor_a2a + incident_a2a)
 3. `Runtime.configure(protocol="HTTP")` — authorizer 미설정 = SigV4 IAM default
 4. `Runtime.launch` — Docker → ECR → Runtime
 5. IAM `Phase6aSupervisorRuntimeExtras` + OAuth provider (Phase 2 Client C 재사용)
@@ -75,15 +75,11 @@ uv run agents/supervisor/runtime/deploy_runtime.py
 
 ## 호출
 
-**정상 경로** — Operator CLI (Phase 6a Step D):
 ```bash
-python agents/operator/cli.py --query "현재 상황 진단해줘"
+uv run agents/supervisor/runtime/invoke_runtime.py --query "현재 상황 진단해줘"
 ```
 
-**admin 디버깅** — SIGV4 (단, customJWTAuthorizer 활성화 상태에선 401):
-```bash
-uv run agents/supervisor/runtime/invoke_runtime.py --query "..."
-```
+Phase 4 의 monitor/incident `invoke_runtime.py` 와 동일 SigV4 IAM 패턴 — Phase 6a Option X 에서 Supervisor 의 customJWTAuthorizer 미설정 → 정상 경로 SigV4. 운영자 + admin 통합 진입점.
 
 ## payload 스키마
 

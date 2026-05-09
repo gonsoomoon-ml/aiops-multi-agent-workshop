@@ -5,8 +5,8 @@ description = "AIOps multi-agent incident response demo on Bedrock AgentCore Run
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
-    # Strands Agent SDK
-    "strands-agents>=0.1.0",
+    # Strands Agent SDK — 1.10+ 가 strands.multiagent.a2a.A2AServer 보유 (Phase 6a 의존)
+    "strands-agents>=1.10.0",
     "strands-agents-tools>=0.1.0",
     # AgentCore Runtime
     "bedrock-agentcore>=1.4.0",
@@ -22,7 +22,7 @@ dependencies = [
     "Flask>=3.0.0",
     "uvicorn>=0.30.0",
     "fastapi>=0.115.0",
-    # HTTP client — Workflow Orchestrator (Phase 6b) + tests
+    # HTTP client — Supervisor A2A caller (httpx.AsyncClient + Bearer 헤더 inject) + a2a-sdk transitive
     "httpx>=0.28.0",
     # Config + utils
     "python-dotenv>=1.0.0",

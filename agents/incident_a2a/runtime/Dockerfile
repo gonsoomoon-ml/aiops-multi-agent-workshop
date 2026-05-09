@@ -14,8 +14,6 @@ RUN uv pip install -r requirements.txt
 
 RUN uv pip install aws-opentelemetry-distro==0.12.2
 
-ENV DOCKER_CONTAINER=1
-
 RUN useradd -m -u 1000 bedrock_agentcore
 USER bedrock_agentcore
 

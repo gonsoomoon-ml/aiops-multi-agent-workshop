@@ -4,7 +4,7 @@ agentcore_runtime.py — Phase 6a Supervisor Agent Runtime 진입점 (HTTP proto
 
 Supervisor 는 운영자 (Operator CLI) 의 진입을 받음 → HTTP protocol Runtime 유지
 (`BedrockAgentCoreApp` + `@app.entrypoint`). sub-agent 호출은 A2A protocol — `@tool`
-함수 3개가 a2a.client.A2AClient 를 사용 (Strands `Agent` 의 `sub_agents` 미지원 →
+함수 2개가 a2a.client.A2AClient 를 사용 (Strands `Agent` 의 `sub_agents` 미지원 →
 *sub-agent 를 도구로 노출* 하는 패턴, research 확인).
 
 inbound (operator → Supervisor):
@@ -12,7 +12,7 @@ inbound (operator → Supervisor):
   - **SigV4 IAM** (Operator CLI 가 boto3 invoke_agent_runtime 사용 — Phase 4 패턴) —
     Phase 6a Option X: Cognito 추가 자원 0, customJWTAuthorizer 미설정 → SigV4 default.
 
-outbound (Supervisor → 3 sub-agents):
+outbound (Supervisor → 2 sub-agents):
   - A2A protocol over HTTPS — `https://bedrock-agentcore.{region}.amazonaws.com/runtimes/
     {quote(arn)}/invocations/`
   - **Cognito Client C M2M token** (Bearer) — Phase 2 의 기존 Client C 재사용. AgentCore
@@ -42,7 +42,6 @@ reference:
       /realestate_coordinator/agent.py:325-361 (가장 가까운 reference — Strands +
       Cognito M2M + @tool wrapping a2a.client)
 """
-import asyncio
 import os
 import sys
 from pathlib import Path

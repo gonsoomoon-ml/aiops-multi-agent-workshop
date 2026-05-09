@@ -210,19 +210,20 @@ def attach_extras_and_oauth_provider(launch_result) -> None:
 
 
 def wait_until_ready(launch_result) -> None:
-    """[5/5 의 일부] Runtime READY 대기."""
+    """[5/5 의 일부] Runtime READY 대기 (max 10분)."""
     print(f"{YELLOW}[5/5] Runtime READY 상태 대기 중 (최대 10분)...{NC}")
 
     agentcore_control = boto3.client("bedrock-agentcore-control", region_name=REGION)
     terminal_states = {"READY", "CREATE_FAILED", "DELETE_FAILED", "UPDATE_FAILED"}
     status = "CREATING"
+    max_attempts = 60
 
-    for attempt in range(1, 61):
+    for attempt in range(1, max_attempts + 1):
         time.sleep(10)
         try:
             resp = agentcore_control.get_agent_runtime(agentRuntimeId=launch_result.agent_id)
             status = resp["status"]
-            print(f"   [{attempt}/60] {status}")
+            print(f"   [{attempt}/{max_attempts}] {status}")
         except Exception as e:
             print(f"   {RED}상태 확인 실패: {e}{NC}")
             break
@@ -232,6 +233,8 @@ def wait_until_ready(launch_result) -> None:
     print()
     if status != "READY":
         print(f"{RED}❌ Runtime 실패 (상태: {status}){NC}")
+        print(f"   CloudWatch 로그 확인:")
+        print(f"   aws logs tail /aws/bedrock-agentcore/runtimes/{AGENT_NAME} --follow --region {REGION}")
         sys.exit(1)
 
 
@@ -264,6 +267,7 @@ def save_runtime_metadata(launch_result) -> None:
 
 
 def print_summary(launch_result) -> None:
+    """배포 완료 metadata + 다음 단계 안내."""
     print(f"{BLUE}{'=' * 60}{NC}")
     print(f"{GREEN}  배포 완료!{NC}")
     print(f"{BLUE}{'=' * 60}{NC}")
@@ -272,6 +276,18 @@ def print_summary(launch_result) -> None:
     print(f"   OAuth Provider:    {OAUTH_PROVIDER_NAME}")
     print(f"   Protocol:          A2A (port 9000 root)")
     print(f"   Mode 지원:         live only (past mode 는 Phase 4 monitor 가 처리)")
+    print()
+    print(f"   다음 단계:")
+    print(f"   1. Incident A2A Runtime 배포 (Supervisor 의 다른 sub-agent):")
+    print(f"      uv run agents/incident_a2a/runtime/deploy_runtime.py")
+    print(f"   2. Supervisor Runtime 배포 (sub-agent ARN cross-load 후 마지막):")
+    print(f"      uv run agents/supervisor/runtime/deploy_runtime.py")
+    print(f"   3. End-to-end smoke (Operator 호출):")
+    print(f"      uv run agents/supervisor/runtime/invoke_runtime.py --query \"현재 상황 진단해줘\"")
+    print(f"   4. 로그 확인:")
+    print(f"      aws logs tail /aws/bedrock-agentcore/runtimes/{AGENT_NAME} --follow")
+    print(f"   5. 자원 정리:")
+    print(f"      bash agents/monitor_a2a/runtime/teardown.sh")
     print()
 
 
