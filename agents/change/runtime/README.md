@@ -79,6 +79,15 @@ bash agents/change/runtime/teardown.sh
 
 Phase 0/2/3/4 자원 + Phase 6a 의 다른 Runtime (monitor_a2a, incident_a2a, supervisor) 보존. 자기 Runtime + IAM Role + ECR + OAuth provider + Log Group 만 삭제.
 
+## Workshop scope limitations
+
+본 Runtime 은 **워크샵 demo 전제** (≤ 1시간 세션, 단일 사용자 sequential 호출):
+
+- **Init-time token + MCPClient 1회 fetch** — `agentcore_runtime.py` 가 module init 시점에 1회 OAuth token 획득 + MCPClient 연결. Cognito M2M token 유효기간 (~1h) 초과 시 모든 Gateway tool 호출이 401. 운영 적용 시 token-refresh callback 또는 Agent 주기적 재구성 필요.
+- **단일 Agent 인스턴스** — Strands `Agent` default `concurrent_invocation_mode=THROW` — 동시 요청 두 번째에서 `ConcurrencyException` raise. Workshop 단일 사용자 OK, 다중 동시 사용자 시 두 번째 fail. 운영 시 `UNSAFE_REENTRANT` 또는 Agent pool 적용.
+
+→ 본 패턴은 reference `02-use-cases/A2A-realestate-agentcore-multiagents` 와 동일. workshop 데모 재현이 목적, 운영 강건성은 후속 phase.
+
 ## reference
 
 - `docs/design/phase6a.md` — §4 (Change Agent), §5 (A2A 활성화), §7 (deployments-storage Lambda)

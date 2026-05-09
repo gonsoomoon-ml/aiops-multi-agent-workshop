@@ -37,3 +37,13 @@ bash agents/monitor_a2a/runtime/teardown.sh
 ```
 
 Phase 4 monitor 자원 미터치 — 검증 step 포함.
+
+## Workshop scope limitations
+
+A2A server 패턴 공통 — 자세한 내용 [`agents/change/runtime/README.md` § Workshop scope limitations](../../change/runtime/README.md#workshop-scope-limitations) 참고.
+
+요약:
+- Init-time token + MCPClient 1회 fetch → 1시간+ 가동 시 401.
+- Strands `concurrent_invocation_mode=THROW` default → 동시 요청 시 두 번째 fail.
+
+Workshop demo (단일 사용자 ≤ 1시간) 전제 OK. 운영 강건성은 후속 phase.

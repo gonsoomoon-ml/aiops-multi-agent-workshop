@@ -34,3 +34,13 @@ bash agents/incident_a2a/runtime/teardown.sh
 ```
 
 Phase 4 incident + 다른 Phase 6a Runtime 보존.
+
+## Workshop scope limitations
+
+A2A server 패턴 공통 — 자세한 내용 [`agents/change/runtime/README.md` § Workshop scope limitations](../../change/runtime/README.md#workshop-scope-limitations) 참고.
+
+요약:
+- Init-time token + MCPClient 1회 fetch → 1시간+ 가동 시 401.
+- Strands `concurrent_invocation_mode=THROW` default → 동시 요청 시 두 번째 fail.
+
+Workshop demo (단일 사용자 ≤ 1시간) 전제 OK. 운영 강건성은 후속 phase.

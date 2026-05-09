@@ -92,7 +92,10 @@ def _runtime_url(arn: str) -> str:
     scopes=[],                                 # Cognito Client B 의 default scope 사용
     auth_flow="M2M",
     into="bearer_token",
-    force_authentication=True,                 # 매 호출마다 fresh token (event loop 격리)
+    # NOTE: force_authentication 미사용 — Phase 6a 는 단일 entrypoint 안에서 sequential
+    # tool 호출 (Strands @tool 패턴) 이라 host_adk_agent reference 의 LazyClientFactory
+    # event-loop 격리 이슈 해당 없음. 기본 cache 활용 (~1시간 유효) — Cognito token
+    # endpoint 호출 회수 절감.
 )
 async def _fetch_a2a_token(*, bearer_token: str = "") -> str:
     """A2A 호출용 Bearer JWT — Client B M2M (sub-agent Runtime 의 allowedClients 매칭)."""
@@ -139,7 +142,10 @@ async def _call_subagent(arn: str, query: str) -> str:
                 ]
                 if texts:
                     return "".join(texts)
-        return ""
+        # 모든 event 통과 후에도 artifacts/history 없음 — Supervisor LLM 이 silent
+        # failure 로 오해하지 않도록 sentinel 반환. system_prompt 가 sub-agent
+        # 호출 실패 케이스 처리 정책 가짐 ("일부 sub-agent 응답 실패").
+        return f"[sub-agent {arn.split('/')[-1]}: empty response]"
 
 
 @tool

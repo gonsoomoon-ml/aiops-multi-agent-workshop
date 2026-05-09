@@ -20,10 +20,15 @@ import urllib.request
 
 import boto3
 
+# 모듈 전역 token cache — Lambda warm container 재사용 시 SSM 호출 절감
 _token_cache: str | None = None
 
 
 def _tool_name(context) -> str:
+    """Lambda invoke metadata 의 도구 이름 추출.
+
+    Gateway 가 ``<target>___<tool>`` 형식으로 ``context.client_context.custom`` 에 주입.
+    """
     cc = getattr(context, "client_context", None)
     custom = getattr(cc, "custom", None) if cc else None
     return (custom or {}).get("bedrockAgentCoreToolName", "")
@@ -100,7 +105,7 @@ def lambda_handler(event, context):
     repo = os.environ["GITHUB_REPO"]
     branch = os.environ["GITHUB_BRANCH"]
 
-    # === Tool 1: deployments/<date>.log read ============================
+    # === 도구 1: deployments/<date>.log read ==========================
     if tool.endswith("get_deployments_log"):
         date = params.get("date", "")
         if not date:
@@ -120,7 +125,7 @@ def lambda_handler(event, context):
         except urllib.error.URLError as e:
             return {"deployments_found": False, "path": path, "error": f"URL error: {e}"}
 
-    # === Tool 2: incidents/<date>.log append ============================
+    # === 도구 2: incidents/<date>.log append =========================
     if tool.endswith("append_incident"):
         date = params.get("date", "")
         body = params.get("body", "")
@@ -130,12 +135,14 @@ def lambda_handler(event, context):
         path = f"incidents/{date}.log"
         try:
             existing, sha = _fetch_github_file(repo, branch, path)
-            new_content = existing.rstrip() + "\n\n" + body.strip() + "\n"
+            # H6 fix — 외부 strip() 으로 파일 첫머리에 빈 줄 누적 회피
+            # (existing 이 빈 string 인 edge case: 직접 푸시된 빈 파일).
+            new_content = (existing.rstrip() + "\n\n" + body.strip()).strip() + "\n"
             commit_message = f"Phase 6a Change Agent — incident append {date}"
             result = _put_github_file(repo, branch, path, new_content, commit_message, sha)
         except urllib.error.HTTPError as e:
             if e.code == 404:
-                # 첫 incident — 파일 새로 생성
+                # 첫 incident — 파일 신규 생성
                 new_content = body.strip() + "\n"
                 commit_message = f"Phase 6a Change Agent — incident create {date}"
                 try:
