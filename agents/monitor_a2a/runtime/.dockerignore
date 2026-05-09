@@ -1,0 +1,8 @@
+# Phase 6a Monitor A2A build context exclusion (docker build context = agents/monitor_a2a/runtime/)
+__pycache__/
+*.pyc
+.pytest_cache/
+.env
+.bedrock_agentcore.yaml
+Dockerfile
+.dockerignore

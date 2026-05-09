@@ -7,6 +7,8 @@
 > **A2A 개념 사전 학습**: 본 phase 는 A2A 프로토콜을 처음 활성화한다. A2A 가 무엇이고 어떻게 동작하는지에 대한 직관적 설명은 `docs/research/a2a_intro.md` 참고. 본 design 은 그 기반 위에서 구체적 구현 결정을 다룬다.
 >
 > **Reference truth**: 2026-05-08 research 에서 Strands SDK + AgentCore Runtime A2A 의 **실제 API 표면** 을 확인 (`docs/research/a2a_intro.md` §참고 + design 본문 각주). 본 design 의 코드 sketch 는 그 결과를 반영한 *교정본* — 초기 design (commit `f380dcc`) 의 가정 일부 (Strands `Agent(sub_agents=[RemoteA2aAgent…])`, `A2AStarletteApplication` direct wrap, A2A 환경에서 `@app.entrypoint` 유지 등) 는 **실제 API 와 불일치하여 본 follow-up 으로 수정됨**.
+>
+> **Preservation rule (2026-05-09)**: workshop instructor 가 Phase 4 (HTTP, 작동) 와 Phase 6a (A2A, 신규) 를 **side-by-side** 비교 가능하도록 `agents/monitor/`, `agents/incident/` 등 이전 phase 코드는 **수정 금지**. Phase 6a 의 Monitor/Incident A2A 변형은 신규 디렉토리 `agents/monitor_a2a/` + `agents/incident_a2a/` 에 작성 (originally §2-4 의 in-place 수정 계획을 폐기). 변경 사항: §2-3 에 두 디렉토리 추가, §2-4 의 monitor/incident 수정 행 제거, Step F 가 retrofit 이 아닌 신규 작성으로 정의 변경.
 
 ---
 
@@ -238,6 +240,31 @@ D10 (Memory 보류)                  — Phase 7+ 재이월
 | `infra/phase6a/teardown.sh` | ~120 줄 | reverse 삭제 + Phase 0/2/3/4 보존 검증 |
 | `infra/phase6a/README.md` | ~80 줄 | 사전 조건 (Phase 2/3/4 alive) + 절차 + 검증 |
 
+#### `agents/monitor_a2a/` (신규 — Phase 4 monitor/ 의 A2A 변형, preservation rule)
+| 파일 | 분량 | 역할 |
+|---|---|---|
+| `agents/monitor_a2a/__init__.py` | 0 LoC | — |
+| `agents/monitor_a2a/shared/**` | (Phase 4 monitor/shared 전체 복사 — agent.py, auth_local.py, mcp_client.py, env_utils.py, modes.py, prompts/, tools/) | self-contained — Phase 4 monitor 와 무관하게 독립 동작 |
+| `agents/monitor_a2a/runtime/agentcore_runtime.py` | ~80 LoC | **A2A protocol** — `A2AServer(agent=…, http_url=AGENTCORE_RUNTIME_URL, serve_at_root=True).to_fastapi_app()` + uvicorn port 9000. `@app.entrypoint` 미사용 (A2A protocol 특성) |
+| `agents/monitor_a2a/runtime/deploy_runtime.py` | ~290 LoC | Phase 4 monitor `deploy_runtime.py` 패턴 + protocolConfiguration A2A + customJWTAuthorizer (allowedClients=[Client B]) |
+| `agents/monitor_a2a/runtime/Dockerfile` | toolkit 자동 | EXPOSE 9000 |
+| `agents/monitor_a2a/runtime/requirements.txt` | ~5 줄 | `strands-agents`, `a2a-sdk`, `bedrock-agentcore`, `fastapi`, `uvicorn` |
+| `agents/monitor_a2a/runtime/teardown.sh` | ~120 줄 | Phase 4 monitor teardown 패턴 |
+| `agents/monitor_a2a/runtime/README.md` | ~30 줄 | — |
+
+→ **agent name**: `aiops_demo_${DEMO_USER}_monitor_a2a` (Phase 4 와 별도 Runtime). OAuth provider: `{agent_name}_gateway_provider`.
+
+#### `agents/incident_a2a/` (신규 — Phase 4 incident/ 의 A2A 변형)
+| 파일 | 분량 | 역할 |
+|---|---|---|
+| `agents/incident_a2a/__init__.py` | 0 LoC | — |
+| `agents/incident_a2a/shared/**` | (Phase 4 incident/shared 전체 복사 — agent.py + prompts/) | — |
+| `agents/incident_a2a/runtime/agentcore_runtime.py` | ~90 LoC | A2A protocol + Strands Agent + Gateway tool filter (`github-storage___`) |
+| `agents/incident_a2a/runtime/deploy_runtime.py` | ~310 LoC | Phase 4 incident pattern (Option A — monitor_a2a/shared + incident_a2a/shared 둘 다 build context 복사) + A2A authorizer |
+| 기타 | (monitor_a2a 와 동일) | |
+
+→ **agent name**: `aiops_demo_${DEMO_USER}_incident_a2a`. Helper 의 출처는 **`monitor_a2a/shared`** (Phase 4 monitor/shared 가 아님 — preservation 위해 격리).
+
 #### `runbooks/` 또는 `deployments/`
 | 파일 | 분량 | 역할 |
 |---|---|---|
@@ -248,15 +275,10 @@ D10 (Memory 보류)                  — Phase 7+ 재이월
 
 | 파일 | 변경 분량 | 변경 내용 |
 |---|---|---|
-| `agents/monitor/runtime/agentcore_runtime.py` | **+50 LoC / -50 LoC (사실상 재작성)** | A2A 프로토콜 Runtime 은 `@app.entrypoint` **사용 안 함** (research 확인). 기존 entrypoint 본문을 Strands `Agent` + `@tool` 들로 재구성, `A2AServer(agent=…, http_url=AGENTCORE_RUNTIME_URL, serve_at_root=True).to_fastapi_app()` 로 wrap. `BedrockAgentCoreApp` 도 사용 안 함. uvicorn 으로 port 9000 에 root 마운트 |
-| `agents/incident/runtime/agentcore_runtime.py` | **+50 LoC / -50 LoC** | 동일 패턴 |
-| `agents/monitor/runtime/deploy_runtime.py` | +30 LoC | Inbound Authorizer 설정 + protocolConfiguration A2A 전환. **`update_agent_runtime` 호출 (Phase 4 Monitor 가 이미 존재) — full PUT 이라 `get_agent_runtime` 으로 기존 필드 read 후 모두 재전송 (§5-3 부연)** |
-| `agents/incident/runtime/deploy_runtime.py` | +30 LoC | 동일 |
-| `agents/monitor/runtime/requirements.txt` | +1 줄 | `a2a-sdk` |
-| `agents/incident/runtime/requirements.txt` | +1 줄 | `a2a-sdk` |
-| `agents/monitor/shared/mcp_client.py` | **변경 없음** | A2A 는 별 transport — MCPClient 는 그대로 |
-| `pyproject.toml` | +2 줄 | `a2a-sdk` workspace dep |
-| `docs/design/phase6a.md` | (이 파일) | — |
+| `agents/monitor/**` | **수정 없음 (preservation rule)** | Phase 4 Monitor 코드 미터치. A2A 변형은 `agents/monitor_a2a/` 신규 디렉토리에 (§2-3-bis) |
+| `agents/incident/**` | **수정 없음 (preservation rule)** | Phase 4 Incident 코드 미터치. A2A 변형은 `agents/incident_a2a/` 신규 디렉토리에 (§2-3-bis) |
+| `pyproject.toml` | +5 줄 | `a2a-sdk>=0.3.24,<1.0` (Strands 1.38 호환 핀) + `fastapi>=0.115.0` (Strands `A2AServer` 의존) — additive만 |
+| `docs/design/phase6a.md` | (이 파일) | preservation rule 반영 follow-up |
 
 ### 2-5. Runtime 환경 변수
 

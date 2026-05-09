@@ -1,0 +1,288 @@
+#!/usr/bin/env python3
+"""
+deploy_runtime.py — Phase 6a Incident A2A AgentCore Runtime 배포
+
+Phase 4 ``agents/incident/runtime/deploy_runtime.py`` 와 동일 5-step 흐름. 차이점:
+  - **agent_name = ``aiops_demo_${DEMO_USER}_incident_a2a``** (Phase 4 incident 와 별 Runtime)
+  - **protocol="A2A"** + customJWTAuthorizer (allowedClients=[Client B])
+  - Build context Option A: monitor_a2a/shared (helper) + incident_a2a/shared (truth) 모두 copy
+  - IAM inline policy: ``Phase6aIncidentA2aRuntimeExtras``
+
+사용법:
+    uv run agents/incident_a2a/runtime/deploy_runtime.py
+
+사전 조건:
+    - Phase 0/2/3/4 deploy 완료
+    - Phase 6a Step C 완료 (Cognito Client B 존재)
+    - agents/monitor_a2a/shared/ 존재 (build context helper 출처)
+    - repo `.env` 에 COGNITO_CLIENT_B_ID 등 추가 키
+"""
+import json
+import os
+import shutil
+import sys
+import time
+from datetime import datetime
+from pathlib import Path
+
+import boto3
+from botocore.exceptions import ClientError
+from dotenv import load_dotenv
+
+SCRIPT_DIR = Path(__file__).resolve().parent
+PROJECT_ROOT = SCRIPT_DIR.parents[2]
+os.chdir(SCRIPT_DIR)
+
+load_dotenv(PROJECT_ROOT / ".env")
+
+GREEN = "\033[0;32m"
+YELLOW = "\033[1;33m"
+BLUE = "\033[0;34m"
+RED = "\033[0;31m"
+NC = "\033[0m"
+
+DEMO_USER = os.environ["DEMO_USER"]
+REGION = os.environ.get("AWS_REGION", "us-west-2")
+AGENT_NAME = f"aiops_demo_{DEMO_USER}_incident_a2a"
+OAUTH_PROVIDER_NAME = f"{AGENT_NAME}_gateway_provider"
+
+
+def copy_shared_into_build_context() -> None:
+    """[1/5] monitor_a2a/shared (helper) + incident_a2a/shared (truth) → build context.
+
+    컨테이너 layout (`/app/`):
+      shared/             ← monitor_a2a/shared (helper)
+      incident_shared/    ← incident_a2a/shared (agent.py + prompts/)
+    """
+    print(f"{YELLOW}[1/5] shared/ × 2 를 빌드 컨텍스트로 복사 중...{NC}")
+
+    monitor_a2a_src = PROJECT_ROOT / "agents" / "monitor_a2a" / "shared"
+    incident_a2a_src = PROJECT_ROOT / "agents" / "incident_a2a" / "shared"
+
+    if not monitor_a2a_src.exists():
+        print(f"{RED}❌ monitor_a2a/shared 미발견 — Phase 6a Step B2 monitor_a2a 선행 필요{NC}")
+        sys.exit(1)
+    if not incident_a2a_src.exists():
+        print(f"{RED}❌ incident_a2a/shared 미발견{NC}")
+        sys.exit(1)
+
+    shared_dst = SCRIPT_DIR / "shared"
+    if shared_dst.exists():
+        shutil.rmtree(shared_dst)
+    shutil.copytree(monitor_a2a_src, shared_dst, ignore=shutil.ignore_patterns("__pycache__"))
+    print(f"{GREEN}  ✅ monitor_a2a/shared → runtime/shared/{NC}")
+
+    incident_dst = SCRIPT_DIR / "incident_shared"
+    if incident_dst.exists():
+        shutil.rmtree(incident_dst)
+    shutil.copytree(incident_a2a_src, incident_dst, ignore=shutil.ignore_patterns("__pycache__"))
+    print(f"{GREEN}  ✅ incident_a2a/shared → runtime/incident_shared/{NC}\n")
+
+
+def configure_runtime():
+    """[2/5] toolkit Runtime.configure(protocol="A2A", authorizer_configuration=...)."""
+    print(f"{YELLOW}[2/5] AgentCore Runtime 설정 중 (A2A protocol)...{NC}")
+    try:
+        from bedrock_agentcore_starter_toolkit import Runtime
+    except ImportError:
+        print(f"{RED}❌ bedrock-agentcore-starter-toolkit 미설치{NC}")
+        sys.exit(1)
+
+    user_pool_id = os.environ["COGNITO_USER_POOL_ID"]
+    client_b_id = os.environ["COGNITO_CLIENT_B_ID"]
+    discovery_url = (
+        f"https://cognito-idp.{REGION}.amazonaws.com/{user_pool_id}/.well-known/openid-configuration"
+    )
+
+    runtime = Runtime()
+    response = runtime.configure(
+        agent_name=AGENT_NAME,
+        entrypoint="agentcore_runtime.py",
+        auto_create_execution_role=True,
+        auto_create_ecr=True,
+        requirements_file="requirements.txt",
+        region=REGION,
+        protocol="A2A",
+        authorizer_configuration={
+            "customJWTAuthorizer": {
+                "discoveryUrl": discovery_url,
+                "allowedClients": [client_b_id],
+            }
+        },
+        request_header_configuration={
+            "requestHeaderAllowlist": [
+                "X-Amzn-Bedrock-AgentCore-Runtime-Custom-Actorid",
+            ]
+        },
+        non_interactive=True,
+    )
+    print(f"{GREEN}✅ 설정 완료 (Protocol: A2A, AllowedClients: [{client_b_id}]){NC}\n")
+    return runtime
+
+
+def launch_runtime(runtime):
+    """[3/5] Docker 빌드 → ECR push → Runtime 생성."""
+    print(f"{YELLOW}[3/5] Runtime 배포 중...{NC}")
+    print(f"   ⏳ 첫 배포 ~5-10분, 업데이트 ~40초\n")
+
+    env_vars = {
+        "GATEWAY_URL": os.environ["GATEWAY_URL"],
+        "OAUTH_PROVIDER_NAME": OAUTH_PROVIDER_NAME,
+        "COGNITO_GATEWAY_SCOPE": os.environ["COGNITO_GATEWAY_SCOPE"],
+        "INCIDENT_MODEL_ID": os.environ.get(
+            "INCIDENT_MODEL_ID", "global.anthropic.claude-sonnet-4-6"
+        ),
+        "OTEL_RESOURCE_ATTRIBUTES": f"service.name={AGENT_NAME}",
+        "AGENT_OBSERVABILITY_ENABLED": "true",
+        "DEMO_USER": DEMO_USER,
+    }
+
+    start_time = datetime.now()
+    result = runtime.launch(env_vars=env_vars, auto_update_on_conflict=True)
+    elapsed = (datetime.now() - start_time).total_seconds()
+
+    print(f"\n{GREEN}✅ 배포 완료 ({elapsed:.0f}초){NC}")
+    print(f"   Runtime ARN: {result.agent_arn}\n")
+    return result
+
+
+def attach_extras_and_oauth_provider(launch_result) -> None:
+    """[4/5] IAM + OAuth provider (Gateway 호출용)."""
+    print(f"{YELLOW}[4/5] IAM + OAuth provider 부착...{NC}")
+
+    agentcore_control = boto3.client("bedrock-agentcore-control", region_name=REGION)
+    runtime_info = agentcore_control.get_agent_runtime(agentRuntimeId=launch_result.agent_id)
+    role_arn = runtime_info["roleArn"]
+    role_name = role_arn.split("/")[-1]
+    account_id = role_arn.split(":")[4]
+
+    iam = boto3.client("iam")
+    extras_policy = {
+        "Version": "2012-10-17",
+        "Statement": [
+            {
+                "Sid": "GetResourceOauth2Token",
+                "Effect": "Allow",
+                "Action": ["bedrock-agentcore:GetResourceOauth2Token"],
+                "Resource": "*",
+            },
+            {
+                "Sid": "ReadCognitoClientSecret",
+                "Effect": "Allow",
+                "Action": ["secretsmanager:GetSecretValue"],
+                "Resource": [
+                    f"arn:aws:secretsmanager:{REGION}:{account_id}:secret:bedrock-agentcore-identity!*",
+                ],
+            },
+        ],
+    }
+    iam.put_role_policy(
+        RoleName=role_name,
+        PolicyName="Phase6aIncidentA2aRuntimeExtras",
+        PolicyDocument=json.dumps(extras_policy),
+    )
+    print(f"{GREEN}✅ IAM inline policy 부착{NC}")
+
+    user_pool_id = os.environ["COGNITO_USER_POOL_ID"]
+    domain = os.environ["COGNITO_DOMAIN"]
+    try:
+        agentcore_control.create_oauth2_credential_provider(
+            name=OAUTH_PROVIDER_NAME,
+            credentialProviderVendor="CustomOauth2",
+            oauth2ProviderConfigInput={
+                "customOauth2ProviderConfig": {
+                    "clientId": os.environ["COGNITO_CLIENT_C_ID"],
+                    "clientSecret": os.environ["COGNITO_CLIENT_C_SECRET"],
+                    "oauthDiscovery": {
+                        "authorizationServerMetadata": {
+                            "issuer": f"https://cognito-idp.{REGION}.amazonaws.com/{user_pool_id}",
+                            "authorizationEndpoint": f"https://{domain}.auth.{REGION}.amazoncognito.com/oauth2/authorize",
+                            "tokenEndpoint": f"https://{domain}.auth.{REGION}.amazoncognito.com/oauth2/token",
+                            "responseTypes": ["token"],
+                        },
+                    },
+                },
+            },
+        )
+        print(f"{GREEN}✅ OAuth Provider 생성: {OAUTH_PROVIDER_NAME}{NC}\n")
+    except ClientError as e:
+        code = e.response["Error"]["Code"]
+        message = e.response["Error"].get("Message", "")
+        if code == "ConflictException" or (code == "ValidationException" and "already exists" in message):
+            print(f"   (OAuth Provider 이미 존재 — skip)\n")
+        else:
+            raise
+
+
+def wait_until_ready(launch_result) -> None:
+    print(f"{YELLOW}[5/5] Runtime READY 대기...{NC}")
+    agentcore_control = boto3.client("bedrock-agentcore-control", region_name=REGION)
+    terminal_states = {"READY", "CREATE_FAILED", "DELETE_FAILED", "UPDATE_FAILED"}
+    status = "CREATING"
+    for attempt in range(1, 61):
+        time.sleep(10)
+        try:
+            resp = agentcore_control.get_agent_runtime(agentRuntimeId=launch_result.agent_id)
+            status = resp["status"]
+            print(f"   [{attempt}/60] {status}")
+        except Exception as e:
+            print(f"   {RED}{e}{NC}")
+            break
+        if status in terminal_states:
+            break
+    if status != "READY":
+        sys.exit(1)
+
+
+def save_runtime_metadata(launch_result) -> None:
+    print(f"{YELLOW}[5/5] runtime/.env 저장 중...{NC}")
+    env_file = SCRIPT_DIR / ".env"
+    if env_file.exists():
+        with open(env_file, "r") as f:
+            lines = [
+                line for line in f.readlines()
+                if not line.startswith(("RUNTIME_ARN=", "RUNTIME_ID=", "RUNTIME_NAME=",
+                                       "OAUTH_PROVIDER_NAME=", "INCIDENT_A2A_RUNTIME_ARN="))
+                and not line.strip().startswith("# Phase 6a Runtime")
+            ]
+    else:
+        lines = []
+
+    lines.append(f"\n# Phase 6a Runtime ({datetime.now().strftime('%Y-%m-%d')})\n")
+    lines.append(f"RUNTIME_NAME={AGENT_NAME}\n")
+    lines.append(f"RUNTIME_ARN={launch_result.agent_arn}\n")
+    lines.append(f"RUNTIME_ID={launch_result.agent_id}\n")
+    lines.append(f"OAUTH_PROVIDER_NAME={OAUTH_PROVIDER_NAME}\n")
+    lines.append(f"INCIDENT_A2A_RUNTIME_ARN={launch_result.agent_arn}\n")
+
+    with open(env_file, "w") as f:
+        f.writelines(lines)
+    print(f"{GREEN}✅ runtime/.env 저장 완료{NC}\n")
+
+
+def print_summary(launch_result) -> None:
+    print(f"{BLUE}{'=' * 60}{NC}")
+    print(f"{GREEN}  배포 완료!{NC}")
+    print(f"{BLUE}{'=' * 60}{NC}")
+    print(f"   Runtime 이름:      {AGENT_NAME}")
+    print(f"   Runtime ARN:       {launch_result.agent_arn}")
+    print(f"   Protocol:          A2A (port 9000)")
+    print()
+
+
+def main() -> None:
+    print(f"\n{BLUE}{'=' * 60}{NC}")
+    print(f"{BLUE}  Phase 6a — Incident A2A AgentCore Runtime 배포{NC}")
+    print(f"{BLUE}{'=' * 60}{NC}\n")
+
+    copy_shared_into_build_context()
+    runtime = configure_runtime()
+    launch_result = launch_runtime(runtime)
+    attach_extras_and_oauth_provider(launch_result)
+    wait_until_ready(launch_result)
+    save_runtime_metadata(launch_result)
+    print_summary(launch_result)
+
+
+if __name__ == "__main__":
+    main()

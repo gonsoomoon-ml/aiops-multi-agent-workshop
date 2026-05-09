@@ -12,12 +12,16 @@ dependencies = [
     "bedrock-agentcore>=1.4.0",
     "bedrock-agentcore-starter-toolkit>=0.1.14",
     # A2A protocol
-    "a2a-sdk>=0.3.0",
+    # Pin to v0.3.x — strands-agents 1.38 expects v0.3 type names (DataPart/FilePart/TextPart);
+    # a2a-sdk 1.x moves them to a2a.compat.v0_3 and breaks strands.multiagent.a2a import.
+    # Reference 02-a2a-agent-sigv4 also pins 0.3.24.
+    "a2a-sdk>=0.3.24,<1.0",
     # AWS SDK
     "boto3>=1.34.0",
-    # Web — Flask for EC2 simulator, uvicorn for A2A serving
+    # Web — Flask for EC2 simulator, uvicorn for A2A serving, FastAPI for A2A server (Strands A2AServer)
     "Flask>=3.0.0",
     "uvicorn>=0.30.0",
+    "fastapi>=0.115.0",
     # HTTP client — Workflow Orchestrator (Phase 6b) + tests
     "httpx>=0.28.0",
     # Config + utils

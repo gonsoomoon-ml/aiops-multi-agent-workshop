@@ -1,0 +1,8 @@
+# Phase 6a Supervisor build context exclusion
+__pycache__/
+*.pyc
+.pytest_cache/
+.env
+.bedrock_agentcore.yaml
+Dockerfile
+.dockerignore
