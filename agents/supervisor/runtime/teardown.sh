@@ -6,7 +6,7 @@ set -euo pipefail
 REGION="${AWS_REGION:-us-west-2}"
 DEMO_USER="${DEMO_USER:?DEMO_USER 미설정}"
 AGENT_NAME="aiops_demo_${DEMO_USER}_supervisor"
-A2A_OAUTH_PROVIDER_NAME="${AGENT_NAME}_a2a_provider"
+OAUTH_PROVIDER_NAME="${AGENT_NAME}_gateway_provider"   # Option X — Phase 4 명명 정합 (Client C 재사용)
 ECR_REPO="bedrock-agentcore-${AGENT_NAME}"
 LOG_GROUP="/aws/bedrock-agentcore/runtimes/${AGENT_NAME}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -41,8 +41,8 @@ if [ -n "${RUNTIME_ID:-}" ] && [ "$RUNTIME_ID" != "None" ]; then
 fi
 
 echo -e "${YELLOW}[3/6] OAuth provider 삭제${NC}"
-aws bedrock-agentcore-control delete-oauth2-credential-provider --region "$REGION" --name "$A2A_OAUTH_PROVIDER_NAME" 2>/dev/null \
-    && echo -e "  ${GREEN}✓ ${A2A_OAUTH_PROVIDER_NAME}${NC}" || echo "  (없음 — skip)"
+aws bedrock-agentcore-control delete-oauth2-credential-provider --region "$REGION" --name "$OAUTH_PROVIDER_NAME" 2>/dev/null \
+    && echo -e "  ${GREEN}✓ ${OAUTH_PROVIDER_NAME}${NC}" || echo "  (없음 — skip)"
 
 echo -e "${YELLOW}[4/6] ECR 삭제${NC}"
 aws ecr describe-repositories --region "$REGION" --repository-names "$ECR_REPO" >/dev/null 2>&1 \
@@ -67,7 +67,7 @@ aws logs delete-log-group --region "$REGION" --log-group-name "$LOG_GROUP" 2>/de
     && echo -e "  ${GREEN}✓ ${LOG_GROUP}${NC}" || echo "  (없음 — skip)"
 
 if [ -f "${SCRIPT_DIR}/.env" ]; then
-    sed -i.bak '/^RUNTIME_ARN=/d; /^RUNTIME_ID=/d; /^RUNTIME_NAME=/d; /^A2A_OAUTH_PROVIDER_NAME=/d; /^SUPERVISOR_RUNTIME_ARN=/d; /^# Phase 6a Runtime/d' "${SCRIPT_DIR}/.env"
+    sed -i.bak '/^RUNTIME_ARN=/d; /^RUNTIME_ID=/d; /^RUNTIME_NAME=/d; /^OAUTH_PROVIDER_NAME=/d; /^SUPERVISOR_RUNTIME_ARN=/d; /^# Phase 6a Runtime/d' "${SCRIPT_DIR}/.env"
     rm -f "${SCRIPT_DIR}/.env.bak"
 fi
 

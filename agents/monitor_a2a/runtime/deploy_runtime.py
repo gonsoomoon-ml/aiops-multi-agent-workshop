@@ -4,7 +4,7 @@ deploy_runtime.py — Phase 6a Monitor A2A AgentCore Runtime 배포
 
 Phase 4 ``agents/monitor/runtime/deploy_runtime.py`` 와 동일 5-step 흐름. 차이점:
   - **agent_name = ``aiops_demo_${DEMO_USER}_monitor_a2a``** (Phase 4 monitor 와 별 Runtime)
-  - **protocol="A2A"** + customJWTAuthorizer (allowedClients=[Cognito Client B id])
+  - **protocol="A2A"** + customJWTAuthorizer (allowedClients=[Cognito Client C id] — Option X)
   - Build context: monitor_a2a/shared 만 복사 (incident 와 달리 self-contained)
   - IAM inline policy: ``Phase6aMonitorA2aRuntimeExtras``
 
@@ -13,9 +13,8 @@ Phase 4 ``agents/monitor/runtime/deploy_runtime.py`` 와 동일 5-step 흐름. �
 
 사전 조건:
     - Phase 0/2/3/4 deploy 완료 (Cognito + Gateway alive)
-    - Phase 6a Step C 완료 (Cognito Client B 존재 — `infra/phase6a/cognito_extras.yaml`)
     - repo `.env` 에 GATEWAY_URL / COGNITO_USER_POOL_ID / COGNITO_DOMAIN /
-      COGNITO_CLIENT_C_ID / COGNITO_CLIENT_C_SECRET / COGNITO_CLIENT_B_ID
+      COGNITO_CLIENT_C_ID / COGNITO_CLIENT_C_SECRET (Phase 2 산출물 — Option X)
 
 수행 단계:
     1. monitor_a2a/shared → 빌드 컨텍스트 복사
@@ -80,7 +79,8 @@ def configure_runtime():
         sys.exit(1)
 
     user_pool_id = os.environ["COGNITO_USER_POOL_ID"]
-    client_b_id = os.environ["COGNITO_CLIENT_B_ID"]
+    # Option X — Phase 2 Client C 재사용 (새 Cognito 자원 추가 0)
+    client_c_id = os.environ["COGNITO_CLIENT_C_ID"]
     discovery_url = (
         f"https://cognito-idp.{REGION}.amazonaws.com/{user_pool_id}/.well-known/openid-configuration"
     )
@@ -97,7 +97,7 @@ def configure_runtime():
         authorizer_configuration={
             "customJWTAuthorizer": {
                 "discoveryUrl": discovery_url,
-                "allowedClients": [client_b_id],
+                "allowedClients": [client_c_id],
             }
         },
         request_header_configuration={
@@ -109,7 +109,7 @@ def configure_runtime():
     )
     print(f"{GREEN}✅ 설정 완료{NC}")
     print(f"   Protocol:    A2A")
-    print(f"   AllowedClients: [{client_b_id}]")
+    print(f"   AllowedClients: [{client_c_id}]  (Phase 2 Client C 재사용)")
     print(f"   Dockerfile:  {response.dockerfile_path}\n")
     return runtime
 

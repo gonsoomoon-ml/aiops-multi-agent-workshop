@@ -1,11 +1,10 @@
 #!/usr/bin/env bash
-# infra/phase6a/teardown.sh — Phase 6a infra reverse 삭제.
+# infra/phase6a/teardown.sh — Phase 6a infra reverse 삭제 (Option X — no new Cognito).
 #
 # 순서:
 #   1. Gateway Target 'deployments-storage' 삭제
 #   2. deployments_lambda CFN stack 삭제 (Lambda + Role + cross-stack policy 자동 detach)
-#   3. cognito_extras CFN stack 삭제 (Client A + B + OperatorUser + 새 ResourceServer)
-#   4. .env / .env.operator cleanup
+#   3. .env cleanup
 #
 # Phase 0/2/3/4 자원 + Phase 6a Runtime 자원 (agents/change, monitor_a2a, incident_a2a,
 # supervisor) 미터치. Runtime teardown 은 각 agent 의 teardown.sh 별도.
@@ -25,14 +24,13 @@ fail() { echo -e "${RED}[teardown]${NC} $1"; exit 1; }
 
 REGION="${AWS_REGION:-us-west-2}"
 DEMO_USER="${DEMO_USER:-${USER:-ubuntu}}"
-COGNITO_STACK="aiops-demo-${DEMO_USER}-phase6a-cognito-extras"
 LAMBDA_STACK="aiops-demo-${DEMO_USER}-phase6a-deployments"
 TARGET_NAME="deployments-storage"
 
 log "region=$REGION demo_user=$DEMO_USER"
 
-# ── [1/4] Gateway Target 'deployments-storage' 삭제 ───
-log "[1/4] Gateway Target '$TARGET_NAME' 삭제"
+# ── [1/3] Gateway Target 'deployments-storage' 삭제 ───
+log "[1/3] Gateway Target '$TARGET_NAME' 삭제"
 if [[ -z "${GATEWAY_ID:-}" ]]; then
     warn "  GATEWAY_ID 미설정 — list-gateways 로 자동 복구"
     DISCOVERED_IDS=$(aws bedrock-agentcore-control list-gateways --region "$REGION" \
@@ -64,8 +62,8 @@ if [[ -n "${GATEWAY_ID:-}" ]]; then
     fi
 fi
 
-# ── [2/4] deployments_lambda stack 삭제 ──────────
-log "[2/4] CFN stack 삭제: $LAMBDA_STACK"
+# ── [2/3] deployments_lambda stack 삭제 ──────────
+log "[2/3] CFN stack 삭제: $LAMBDA_STACK"
 if aws cloudformation describe-stacks --stack-name "$LAMBDA_STACK" --region "$REGION" >/dev/null 2>&1; then
     aws cloudformation delete-stack --stack-name "$LAMBDA_STACK" --region "$REGION"
     aws cloudformation wait stack-delete-complete --stack-name "$LAMBDA_STACK" --region "$REGION" \
@@ -75,35 +73,12 @@ else
     warn "  (stack 없음 — skip)"
 fi
 
-# ── [3/4] cognito_extras stack 삭제 ──────────────
-log "[3/4] CFN stack 삭제: $COGNITO_STACK"
-if aws cloudformation describe-stacks --stack-name "$COGNITO_STACK" --region "$REGION" >/dev/null 2>&1; then
-    aws cloudformation delete-stack --stack-name "$COGNITO_STACK" --region "$REGION"
-    aws cloudformation wait stack-delete-complete --stack-name "$COGNITO_STACK" --region "$REGION" \
-        || warn "  stack delete wait 실패"
-    log "  ✓ stack 삭제 완료"
-else
-    warn "  (stack 없음 — skip)"
-fi
-
-# ── [4/4] .env / .env.operator cleanup ───────────
-log "[4/4] .env cleanup"
+# ── [3/3] .env cleanup ───────────────────────────
+log "[3/3] .env cleanup"
 if [[ -f "$PROJECT_ROOT/.env" ]]; then
-    sed -i.bak \
-        -e '/^COGNITO_CLIENT_A_ID=/d' \
-        -e '/^COGNITO_CLIENT_B_ID=/d' \
-        -e '/^COGNITO_CLIENT_B_SECRET=/d' \
-        -e '/^COGNITO_AGENT_INVOKE_SCOPE=/d' \
-        -e '/^OPERATOR_USERNAME=/d' \
-        -e '/^DEPLOYMENTS_STORAGE_LAMBDA_ARN=/d' \
-        "$PROJECT_ROOT/.env"
+    sed -i.bak '/^DEPLOYMENTS_STORAGE_LAMBDA_ARN=/d' "$PROJECT_ROOT/.env"
     rm -f "$PROJECT_ROOT/.env.bak"
-    log "  ✓ .env 의 Phase 6a 항목 제거"
-fi
-
-if [[ -f "$PROJECT_ROOT/.env.operator" ]]; then
-    rm -f "$PROJECT_ROOT/.env.operator"
-    log "  ✓ .env.operator 삭제"
+    log "  ✓ .env 의 DEPLOYMENTS_STORAGE_LAMBDA_ARN 제거"
 fi
 
 # packaged template artifact 정리

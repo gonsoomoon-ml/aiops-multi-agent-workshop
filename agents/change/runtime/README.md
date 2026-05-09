@@ -20,16 +20,15 @@ agents/change/
 
 ## 사전 조건
 
-1. **Phase 0/2/3/4 deploy 완료** — Cognito UserPool + Gateway + 3 Lambda alive
+1. **Phase 0/2/3/4 deploy 완료** — Cognito UserPool + Client C + Gateway + 3 Lambda alive
 2. **Phase 6a Step C 선행** — `infra/phase6a/`:
-   - `cognito_extras.yaml` deploy (Client A + Client B + 신규 ResourceServer)
    - `deployments_lambda.yaml` deploy (deployments-storage Lambda + Gateway Target)
+   - (Phase 6a Option X — Cognito 신규 자원 추가 0)
 3. **Phase 6a Step B2 선행** — `agents/monitor_a2a/shared/` 디렉토리 존재 (build context Option A 의 helper 출처)
-4. **repo `.env`** — 다음 키 존재:
+4. **repo `.env`** — Phase 2 산출물:
    - `DEMO_USER`, `AWS_REGION`, `GATEWAY_URL`, `COGNITO_GATEWAY_SCOPE`
    - `COGNITO_USER_POOL_ID`, `COGNITO_DOMAIN`
-   - `COGNITO_CLIENT_C_ID`, `COGNITO_CLIENT_C_SECRET` (Phase 2 — Gateway M2M)
-   - `COGNITO_CLIENT_B_ID` (Phase 6a Step C — A2A inbound audience)
+   - `COGNITO_CLIENT_C_ID`, `COGNITO_CLIENT_C_SECRET` (Gateway 호출 + A2A inbound 둘 다 — Option X)
 
 ## 배포
 
@@ -46,10 +45,10 @@ uv run agents/change/runtime/deploy_runtime.py
 
 ## 호출
 
-A2A Runtime 은 `bedrock-agentcore:invoke_agent_runtime` (HTTP) 가 아닌 A2A JSON-RPC 호출. 본 Runtime 은 다음 두 경로로 호출됨:
+A2A Runtime 은 `bedrock-agentcore:invoke_agent_runtime` (HTTP) 가 아닌 A2A JSON-RPC 호출. 본 Runtime 은 다음 경로로 호출됨:
 
-1. **Supervisor `@tool call_change`** (Phase 6a Step B3) — `a2a.client.A2AClient.send_message()`. Cognito Client B Bearer JWT 자동 주입 (OAuth provider).
-2. **Operator CLI 단독 호출** (Phase 6a Step D) — Cognito Client A user JWT 로 직접 Change A2A endpoint 호출 가능 (단독 디버깅용).
+1. **Supervisor `@tool call_change`** — `a2a.client.A2AClient.send_message()`. Cognito Client C Bearer JWT 자동 주입 (Phase 2 OAuth provider 재사용 — Option X).
+2. **단독 디버깅** — `02-a2a-agent-sigv4/client.py` 의 `SigV4HTTPXAuth` 패턴 + httpx 직접 호출. 단 Runtime 의 customJWTAuthorizer 가 활성화 상태이므로 SigV4 만으로는 401 — Cognito Bearer 또는 Authorizer 임시 제거 필요.
 
 단순 IAM SigV4 호출 예시 (admin 디버깅 — 02-a2a-agent-sigv4 reference 참조):
 ```bash

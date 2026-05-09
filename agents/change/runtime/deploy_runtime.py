@@ -4,8 +4,8 @@ deploy_runtime.py — Phase 6a Change Agent AgentCore Runtime 배포 (A2A protoc
 
 Phase 4 incident `deploy_runtime.py` 와 다른 점:
   - **protocol="A2A"** — toolkit `Runtime.configure(protocol=...)` 가 A2A protocol 직접 지원
-  - **authorizer_configuration** — customJWTAuthorizer.allowedClients=[Cognito Client B id]
-    (Cognito M2M Bearer JWT 가 caller — Supervisor 측 OAuth provider 발급)
+  - **authorizer_configuration** — customJWTAuthorizer.allowedClients=[Cognito Client C id]
+    (Phase 2 의 기존 Client C 재사용 — Phase 6a Option X. 새 Cognito 자원 추가 0)
   - **request_header_configuration** — Custom-Actorid 헤더 allowlist
   - Build context 에 monitor_a2a/shared + change/shared 두 디렉토리 모두 copy
     (Phase 4 incident 의 Option A 패턴, 단 monitor_a2a/shared 사용 — preservation rule)
@@ -15,12 +15,13 @@ Phase 4 incident `deploy_runtime.py` 와 다른 점:
 
 사전 조건:
     - Phase 2 + Phase 3 + Phase 4 deploy 완료 (Cognito stack + Gateway + Lambda × 3 alive)
-    - Phase 6a Step C 완료 — `infra/phase6a/cognito_extras.yaml` (Cognito Client B 발급) +
-      `infra/phase6a/deployments_lambda.yaml` (deployments-storage Lambda + Gateway Target)
+    - Phase 6a Step C 완료 — `infra/phase6a/deployments_lambda.yaml` (deployments-storage
+      Lambda + Gateway Target). Option X 로 Cognito 신규 자원 추가 0.
     - agents/monitor_a2a/shared/ 신규 디렉토리 존재 (Phase 6a Step B2)
     - AWS 자격 증명 + Docker daemon
     - bedrock-agentcore-starter-toolkit 설치 (pyproject.toml)
-    - repo root .env 에 GATEWAY_URL / COGNITO_* / COGNITO_CLIENT_B_ID 채워진 상태
+    - repo root .env 에 GATEWAY_URL / COGNITO_USER_POOL_ID / COGNITO_DOMAIN /
+      COGNITO_CLIENT_C_ID / COGNITO_CLIENT_C_SECRET (Phase 2 산출물)
 
 수행 단계:
     1. monitor_a2a/shared + change/shared 를 빌드 컨텍스트로 복사
@@ -102,7 +103,7 @@ def copy_shared_into_build_context() -> None:
 def configure_runtime():
     """[2/5] toolkit Runtime.configure(protocol="A2A", authorizer_configuration=...).
 
-    customJWTAuthorizer 는 Cognito Client B (M2M, A2A audience) 발급 토큰만 통과.
+    customJWTAuthorizer 는 Cognito Client C (Phase 2 재사용 — Option X) 발급 토큰만 통과.
     """
     print(f"{YELLOW}[2/5] AgentCore Runtime 설정 중 (A2A protocol)...{NC}")
     try:
@@ -112,7 +113,10 @@ def configure_runtime():
         sys.exit(1)
 
     user_pool_id = os.environ["COGNITO_USER_POOL_ID"]
-    client_b_id = os.environ["COGNITO_CLIENT_B_ID"]
+    # Option X — Phase 2 Client C 재사용 (새 Cognito 자원 추가 0).
+    # AgentCore customJWTAuthorizer 는 aud (= client_id) 만 검증, scope 미검증 →
+    # Client C 의 Gateway scope 토큰이 sub-agent A2A inbound 에도 통과.
+    client_c_id = os.environ["COGNITO_CLIENT_C_ID"]
     discovery_url = (
         f"https://cognito-idp.{REGION}.amazonaws.com/{user_pool_id}/.well-known/openid-configuration"
     )
@@ -129,7 +133,7 @@ def configure_runtime():
         authorizer_configuration={
             "customJWTAuthorizer": {
                 "discoveryUrl": discovery_url,
-                "allowedClients": [client_b_id],
+                "allowedClients": [client_c_id],
             }
         },
         request_header_configuration={
@@ -141,7 +145,7 @@ def configure_runtime():
     )
     print(f"{GREEN}✅ 설정 완료{NC}")
     print(f"   Protocol:    A2A")
-    print(f"   AllowedClients: [{client_b_id}]")
+    print(f"   AllowedClients: [{client_c_id}]  (Phase 2 Client C 재사용)")
     print(f"   Dockerfile:  {response.dockerfile_path}")
     print(f"   Config:      {response.config_path}\n")
     return runtime

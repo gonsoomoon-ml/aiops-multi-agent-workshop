@@ -41,22 +41,24 @@ agent = create_supervisor_agent(
 
 LLM 이 system_prompt 의 routing 정책 따라 어떤 tool 을 부를지 결정. tool 안에서 A2A hop 발생.
 
-## Auth
+## Auth (Option X — Phase 2 Client C 재사용)
 
 | 방향 | 검증 | OAuth provider | scope/audience |
 |---|---|---|---|
-| inbound (Operator → Supervisor) | AgentCore customJWTAuthorizer | (Cognito Client A user JWT) | allowedClients=[Client A] |
-| outbound (Supervisor → 3 sub-agent) | 각 sub-agent 의 customJWTAuthorizer | `requires_access_token(provider_name=A2A_OAUTH_PROVIDER_NAME, auth_flow="M2M")` | Client B M2M 토큰의 `aud` ↔ sub-agent 의 `allowedClients=[Client B]` |
+| inbound (Operator → Supervisor) | **SigV4 IAM** (no customJWTAuthorizer) | (해당 없음) | 사용자 IAM Role 의 `bedrock-agentcore:InvokeAgentRuntime` |
+| outbound (Supervisor → 3 sub-agent) | 각 sub-agent 의 customJWTAuthorizer | `requires_access_token(provider_name=OAUTH_PROVIDER_NAME, auth_flow="M2M")` | **Client C** M2M 토큰의 `aud` ↔ sub-agent 의 `allowedClients=[Client C]` (Phase 2 재사용) |
+
+**핵심 통찰**: AgentCore `customJWTAuthorizer.allowedClients` 는 `aud` (= client_id) 만 검증, scope 미검증. Phase 2 의 Client C 토큰 (Gateway scope) 이 sub-agent A2A inbound 에도 통과 — 새 Cognito Client 추가 0.
 
 ## 사전 조건
 
-1. **Phase 0/2/3/4 deploy 완료**
-2. **Phase 6a Step C 완료** — Cognito Client A + Client B 발급 (`infra/phase6a/cognito_extras.yaml`)
-3. **Phase 6a Step B1 (change) + B2 (monitor_a2a + incident_a2a) Runtime deploy 완료** — 각 `runtime/.env` 에 ARN 작성됨
-4. **repo `.env`** 에:
+1. **Phase 0/2/3/4 deploy 완료** — Phase 2 산출물 `COGNITO_CLIENT_C_ID/SECRET` 가 `.env` 에 존재
+2. **Phase 6a Step B1 (change) + B2 (monitor_a2a + incident_a2a) Runtime deploy 완료** — 각 `runtime/.env` 에 ARN 작성됨
+3. **repo `.env`** 에 (Phase 2 산출물):
    - `COGNITO_USER_POOL_ID`, `COGNITO_DOMAIN`
-   - `COGNITO_CLIENT_A_ID` (operator USER_PASSWORD_AUTH)
-   - `COGNITO_CLIENT_B_ID`, `COGNITO_CLIENT_B_SECRET` (Supervisor M2M)
+   - `COGNITO_CLIENT_C_ID`, `COGNITO_CLIENT_C_SECRET`
+   - `COGNITO_GATEWAY_SCOPE`
+4. (Phase 6a Option X — 새 Cognito 자원 추가 0)
 
 ## 배포
 
@@ -67,9 +69,9 @@ uv run agents/supervisor/runtime/deploy_runtime.py
 6단계:
 1. supervisor/shared → 빌드 컨텍스트 복사
 2. sub-agent ARN cross-load (3개의 runtime/.env)
-3. `Runtime.configure(protocol="HTTP", customJWTAuthorizer[ClientA])`
+3. `Runtime.configure(protocol="HTTP")` — authorizer 미설정 = SigV4 IAM default
 4. `Runtime.launch` — Docker → ECR → Runtime
-5. IAM `Phase6aSupervisorRuntimeExtras` + OAuth provider (Client B)
+5. IAM `Phase6aSupervisorRuntimeExtras` + OAuth provider (Phase 2 Client C 재사용)
 6. READY 대기 + `runtime/.env` 저장
 
 ## 호출

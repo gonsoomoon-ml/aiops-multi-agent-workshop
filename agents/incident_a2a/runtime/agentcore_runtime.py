@@ -9,7 +9,7 @@ A2A protocol wrap.
 Phase 4 incident 와의 차이:
   - **A2A protocol** — `BedrockAgentCoreApp` + `@app.entrypoint` 미사용. Strands
     `A2AServer.to_fastapi_app()` 가 FastAPI 로 wrap, uvicorn 으로 :9000 listen.
-  - **Inbound auth** — Cognito Client B Bearer JWT (allowedClients).
+  - **Inbound auth** — Cognito Client C Bearer JWT (Phase 2 재사용, allowedClients=[C]).
   - **AgentCard 자동 생성** — `agent.tool_registry` 의 github-storage tool 들이 skill 로 export.
   - **payload schema** — A2A `message/send` 의 user message text 가 그대로 입력.
     Phase 4 의 `{"alarm_name": "..."}` 와 호환되도록 system_prompt 가 처리.

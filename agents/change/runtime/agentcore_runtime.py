@@ -8,8 +8,8 @@ Phase 4 incident `agentcore_runtime.py` 와 다른 점:
     path 에 expose. AgentCore Runtime 의 `protocolConfiguration: A2A` 와 정합.
   - **두 Target prefix 필터** — `deployments-storage___` (read) + `github-storage___`
     (incidents append) 두 Target 의 tool 만 caller 에 전달.
-  - **Inbound Authorizer** — Cognito Client B (M2M, A2A audience) JWT 가 AgentCore
-    측에서 검증된 후 도달. 본 코드는 직접 검증 안 함.
+  - **Inbound Authorizer** — Cognito Client C (Phase 2 재사용, Option X) Bearer JWT 가
+    AgentCore 측에서 검증된 후 도달. 본 코드는 직접 검증 안 함.
   - **payload schema** — A2A `message/send` 의 user message text 가 그대로 입력. JSON
     str 또는 plain text 둘 다 허용 — system_prompt 가 JSON parsing.
 

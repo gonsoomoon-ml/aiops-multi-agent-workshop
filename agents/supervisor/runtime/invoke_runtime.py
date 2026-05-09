@@ -2,14 +2,12 @@
 """
 invoke_runtime.py — Phase 6a Supervisor admin invoke (단독 디버깅용 SIGV4 호출)
 
-Supervisor Runtime 의 customJWTAuthorizer 가 Cognito Client A user JWT 만 통과시키는데,
-admin 디버깅 시 (예: 배포 직후 health check) Cognito 인증 없이 호출하고 싶으면 별 문제.
-**본 스크립트는 SIGV4 호출이라 customJWTAuthorizer 가 활성화된 상태에선 401 반환** —
-admin 용도로는 임시로 authorizer 제거 후 사용 또는 Phase 4 invoke_runtime.py 와 동일한
-패턴이 필요할 때 reference.
+Phase 6a Option X 에서 Supervisor 는 **customJWTAuthorizer 미설정 = SigV4 default** —
+본 스크립트도 정상 경로의 simplified version. agents/operator/cli.py 와 동일한 SigV4
+인증을 admin 친화 형식으로 노출 (CLI args, 별 default query 등).
 
 정상 경로:
-    Operator CLI (Phase 6a Step D) — Cognito Client A USER_PASSWORD_AUTH → JWT → HTTPS POST.
+    `python agents/operator/cli.py --query "..."` — Operator CLI (Phase 6a Step D).
 
 사용법 (admin 디버깅 only — authorizer 비활성화 상태에서):
     uv run agents/supervisor/runtime/invoke_runtime.py --query "현재 상황 진단해줘"

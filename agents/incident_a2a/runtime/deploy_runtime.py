@@ -4,7 +4,7 @@ deploy_runtime.py — Phase 6a Incident A2A AgentCore Runtime 배포
 
 Phase 4 ``agents/incident/runtime/deploy_runtime.py`` 와 동일 5-step 흐름. 차이점:
   - **agent_name = ``aiops_demo_${DEMO_USER}_incident_a2a``** (Phase 4 incident 와 별 Runtime)
-  - **protocol="A2A"** + customJWTAuthorizer (allowedClients=[Client B])
+  - **protocol="A2A"** + customJWTAuthorizer (allowedClients=[Client C] — Option X, Phase 2 재사용)
   - Build context Option A: monitor_a2a/shared (helper) + incident_a2a/shared (truth) 모두 copy
   - IAM inline policy: ``Phase6aIncidentA2aRuntimeExtras``
 
@@ -12,10 +12,9 @@ Phase 4 ``agents/incident/runtime/deploy_runtime.py`` 와 동일 5-step 흐름. 
     uv run agents/incident_a2a/runtime/deploy_runtime.py
 
 사전 조건:
-    - Phase 0/2/3/4 deploy 완료
-    - Phase 6a Step C 완료 (Cognito Client B 존재)
+    - Phase 0/2/3/4 deploy 완료 (Phase 2 산출물 COGNITO_CLIENT_C_ID 가 .env 에 존재)
     - agents/monitor_a2a/shared/ 존재 (build context helper 출처)
-    - repo `.env` 에 COGNITO_CLIENT_B_ID 등 추가 키
+    - (Phase 6a Option X — 새 Cognito 자원 추가 0)
 """
 import json
 import os
@@ -89,7 +88,8 @@ def configure_runtime():
         sys.exit(1)
 
     user_pool_id = os.environ["COGNITO_USER_POOL_ID"]
-    client_b_id = os.environ["COGNITO_CLIENT_B_ID"]
+    # Option X — Phase 2 Client C 재사용 (새 Cognito 자원 추가 0)
+    client_c_id = os.environ["COGNITO_CLIENT_C_ID"]
     discovery_url = (
         f"https://cognito-idp.{REGION}.amazonaws.com/{user_pool_id}/.well-known/openid-configuration"
     )
@@ -106,7 +106,7 @@ def configure_runtime():
         authorizer_configuration={
             "customJWTAuthorizer": {
                 "discoveryUrl": discovery_url,
-                "allowedClients": [client_b_id],
+                "allowedClients": [client_c_id],
             }
         },
         request_header_configuration={
@@ -116,7 +116,7 @@ def configure_runtime():
         },
         non_interactive=True,
     )
-    print(f"{GREEN}✅ 설정 완료 (Protocol: A2A, AllowedClients: [{client_b_id}]){NC}\n")
+    print(f"{GREEN}✅ 설정 완료 (Protocol: A2A, AllowedClients: [{client_c_id}] — Phase 2 Client C){NC}\n")
     return runtime
 
 
