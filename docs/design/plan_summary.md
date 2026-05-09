@@ -13,9 +13,8 @@
 | --- | --------------------------------------- | -------------------------------------------------- |
 | C1  | Strands 로컬 → AgentCore Runtime 동일 코드 승격 | 로컬 == Runtime 응답                                   |
 | C2  | Gateway + MCP로 도구 외부화                   | Agent 코드에 도구 import 0건                             |
-| C3  | A2A 프로토콜로 독립 Runtime 간 호출               | Workflow / Supervisor 둘 다 다른 Runtime AgentCard로 호출 |
-| C4  | AgentCore Policy로 권한·가드레일 외부화           | NL Policy 거부 시연 (readonly enforcement)              |
-| C5  | 두 Orchestration 패턴 비교 (stretch)         | Workflow vs Supervisor 토큰·지연·결정성 측정 (Phase 6b)      |
+| C3  | A2A 프로토콜로 독립 Runtime 간 호출               | Supervisor → 다른 Runtime AgentCard 호출                |
+| C4  | AgentCore Policy로 권한·가드레일 외부화 *(stretched)* | NL Policy 거부 시연 (readonly enforcement)        |
 
 
 ---
@@ -53,19 +52,17 @@ T+8m     Orchestrator — 종합 → 진단 리포트 자동 commit + 권고 액
        ▼
 ┌──────────────────────────────────────────────────────────────┐
 │  Orchestrator                                                │
-│   ├─ Supervisor (AgentCore Runtime)  [Phase 6a 필수]         │
-│   │    Strands Agent + sub_agents (LLM 라우팅)              │
-│   └─ Workflow (로컬 Python CLI)      [Phase 6b stretch]      │
-│        asyncio + httpx (결정론적, 비교 측정용)              │
+│   └─ Supervisor (AgentCore Runtime)  [Phase 6a 필수]         │
+│        Strands Agent + @tool wrapping a2a.client (LLM 라우팅) │
 └──────────────────────────────────────────────────────────────┘
-       │  A2A JSON-RPC + Bearer (스타 토폴로지, Cognito Client B)
+       │  A2A JSON-RPC + Bearer (스타 토폴로지, Cognito Client C 재사용 — Option X)
        ├──────────────┬──────────────┐
        ▼              ▼              ▼
 ┌─────────────┐ ┌─────────────┐ ┌─────────────┐
 │ Monitor     │ │ Incident    │ │ Change      │
-│ (Strands)   │ │ (Strands)   │ │ (Strands)   │
-│ AgentCore   │ │ AgentCore   │ │ AgentCore   │
-│ Runtime     │ │ Runtime     │ │ Runtime     │
+│ (Strands)   │ │ (Strands)   │ │ *(stretched)│
+│ AgentCore   │ │ AgentCore   │ │             │
+│ Runtime     │ │ Runtime     │ │             │
 └─────────────┘ └─────────────┘ └─────────────┘
        │              │              │
        │  MCP streamable-http + Bearer (AgentCore Identity 자동, Cognito Client C)
@@ -88,13 +85,13 @@ T+8m     Orchestrator — 종합 → 진단 리포트 자동 commit + 권고 액
 ### 데이터·인증 흐름 (요청 1건)
 
 ```
-운영자 → CLI → Supervisor Runtime (Phase 6b stretch: Workflow 로컬 대안 경로)
-            ↓ Cognito Client A → Supervisor 진입
-        Supervisor → Monitor / Incident / Change (스타 토폴로지)
-            ↓ A2A JSON-RPC + Bearer (Cognito Client B)
+운영자 → CLI → Supervisor Runtime
+            ↓ SigV4 IAM (Phase 6a Option X — Operator CLI = boto3 invoke_agent_runtime)
+        Supervisor → Monitor / Incident (스타 토폴로지)  *Change 는 stretched*
+            ↓ A2A JSON-RPC + Bearer (Cognito Client C 재사용 — Option X, allowedClients=[C])
         Sub-agent Runtime
             ↓ MCP streamable-http + Bearer
-            ↑ AgentCore Identity 자동 발급 (Cognito Client C)
+            ↑ AgentCore Identity 자동 발급 (Cognito Client C — 동일 client, 다중 audience)
         AgentCore Gateway
             ↓ Smithy 매핑 → AWS SigV4 / Lambda invoke
         실 CloudWatch API  /  GitHub Lambda  /  history mock Lambda
@@ -105,19 +102,19 @@ T+8m     Orchestrator — 종합 → 진단 리포트 자동 commit + 권고 액
 ### 컴포넌트 인벤토리
 
 
-| 컴포넌트              | 수                                                       |
-| ----------------- | ------------------------------------------------------- |
-| Operator CLI      | 1 (Python ~30 LoC, Cognito Client A 사용)                 |
-| Strands Agent     | 4 (Monitor + Incident + Change + Supervisor)            |
-| Orchestrator      | 1 + 1 stretch (Supervisor 필수 / Workflow는 Phase 6b)    |
-| AgentCore Runtime | 4                                                       |
-| AgentCore Gateway | 1 (Target 3: CloudWatch native + GitHub + history mock) |
-| Lambda            | 2 (GitHub + history mock)                               |
-| EC2 simulator     | 1 (t3.micro + Flask + 카오스 스크립트, EC mall 도착 시 대체)       |
-| Storage           | GitHub repo 1 (또는 S3 bucket 1, fallback)                |
-| Cognito           | UserPool 1 + UserPoolClient 3 (A: 운영자→Supervisor / B: Supervisor→Sub-agents / C: Sub-agents→Gateway) |
-| IAM Role          | 1 (통합, 모든 Runtime 공유)                              |
-| NL Policy         | 1 (readonly enforcement)                                |
+| 컴포넌트              | 수 (필수)                  | + stretched                          |
+| ----------------- | ----------------------- | ------------------------------------ |
+| Operator CLI      | 1 (`agents/supervisor/runtime/invoke_runtime.py`, SigV4 IAM) | — |
+| Strands Agent     | 3 (Monitor + Incident + Supervisor) | + 1 (Change)              |
+| Orchestrator      | 1 (Supervisor)          | —                                    |
+| AgentCore Runtime | 3 (Monitor a2a + Incident a2a + Supervisor) | + 1 (Change)     |
+| AgentCore Gateway | 1 (Target 3: CloudWatch + GitHub + history mock) | + 1 Target (deployments-storage, stretched) |
+| Lambda            | 2 (GitHub + history mock) | + 1 (deployments-storage, stretched) |
+| EC2 simulator     | 1 (t3.micro + Flask + 카오스 스크립트, EC mall 도착 시 대체) | — |
+| Storage           | GitHub repo 1 (또는 S3 bucket 1, fallback) | — |
+| Cognito           | UserPool 1 + UserPoolClient 1 (Client C — Phase 2, Gateway/A2A 다중 audience 재사용 — Option X) | — |
+| IAM Role          | per-Runtime auto-create (toolkit) | — |
+| NL Policy         | — | 1 (readonly enforcement, stretched) |
 
 
 ---
@@ -125,17 +122,24 @@ T+8m     Orchestrator — 종합 → 진단 리포트 자동 commit + 권고 액
 ## 구현 단계
 
 
+### 필수 phase (workshop primary scope)
+
 | Phase | 산출물                                                       |
 | ----- | --------------------------------------------------------- |
 | 0     | EC2 시뮬레이터 + CloudWatch alarm 2종 (real 1 + noise 1) + 카오스 스크립트 1종           |
 | 1     | Monitor Agent 로컬 (Strands + 3가지 진단 유형, Track B mock 검증)                |
 | 2     | Gateway + MCP로 도구 외부화 (CloudWatch native + GitHub) + 라이브 alarm 분류 검증  |
 | 3     | Monitor → AgentCore Runtime + A2A 서버 승격                                |
-| 4     | Incident Agent + GitHub storage Lambda + sequential CLI (A2A는 6a 통합 이월) |
-| 5     | ~~AgentCore Policy 적용 (NL Policy readonly) + 거부 시연 스크립트~~ — **본 프로젝트 scope 제외** (Strands+AgentCore 학습량 우선) |
-| 6a    | Supervisor + Change Agent + A2A 활성화 (server+caller) + Cognito Client A/B + deployments-storage Lambda + Operator CLI |
-| 6b    | (stretch) Workflow Orchestrator + Workflow vs Supervisor 비교 측정           |
+| 4     | Incident Agent + GitHub storage Lambda + sequential CLI                  |
+| 6a    | Supervisor + Monitor a2a + Incident a2a + A2A 활성화 (`serve_a2a` + LazyExecutor) + Operator 진입점 (`agents/supervisor/runtime/invoke_runtime.py`) — Cognito Client C 재사용 (Option X), Phase 4 shared/ 직접 재사용 (Option G) |
 | 7     | EC mall 통합 — alarm 확장만으로 동일 시나리오 재현 (외부 의존: 동료 EC mall 완료)         |
+
+### Stretched phase (시간 여유 / workshop 후속 자료)
+
+| 항목 | 산출물                                                       |
+| ----- | --------------------------------------------------------- |
+| Policy | AgentCore Policy 적용 (NL Policy readonly) + 거부 시연 스크립트 — workshop 분량 제약으로 본 phase 에서 우선 제외 |
+| Change | Change Agent + deployments-storage Lambda + Gateway Target + cross-stack policy + `deployments/<date>.log` seed + `incidents/<date>.log` write — Phase 6a 의 일부에서 단순화 위해 분리. Supervisor 의 `call_change` @tool + 3-agent topology 복원 |
 
 
 ---
@@ -149,12 +153,12 @@ T+8m     Orchestrator — 종합 → 진단 리포트 자동 commit + 권고 액
   - **로컬↔Runtime 전환 패턴 + 부트스트랩**: `/home/ubuntu/developer-briefing-agent/` — `local-agent/` ↔ `managed-agentcore/` 폴더 분리 + `create_agent()` 단일 진실 원천 + 시스템 프롬프트 외부화 + memory hooks + `setup.sh` 통합 부트스트랩 + `setup/store_github_token.sh` SSM SecureString 패턴
   - **에이전트별 모델·관측성 env 패턴**: `/home/ubuntu/sample-deep-insight/managed-agentcore/.env.example` — per-agent `MODEL_ID` 분리 + OTEL `service.name` 자동 통합
   - **변형 포인트**: Google ADK Supervisor → Strands sub_agents 전환, OpenAI/Tavily 제거, GitHub Lambda + history mock Lambda Target 추가, EC2 카오스 + 3가지 진단 유형 신규
-- **AWS 계정 액세스**: Bedrock Claude Sonnet 4.6 / Haiku 4.5 model access 활성화 + AgentCore Runtime 4개·Gateway 1개 quota 확인
+- **AWS 계정 액세스**: Bedrock Claude Sonnet 4.6 / Haiku 4.5 model access 활성화 + AgentCore Runtime 3개 (필수) + 1개 (stretched Change) · Gateway 1개 quota 확인
 - **리전**: us-west-2 (A2A 정식 지원)
 - **모델 (env var로 에이전트별 분리)**:
   - `MONITOR_MODEL_ID=claude-sonnet-4-6` (기본)
   - `INCIDENT_MODEL_ID=claude-sonnet-4-6`
-  - `CHANGE_MODEL_ID=claude-haiku-4-5-20251001` (비용 옵션)
+  - `CHANGE_MODEL_ID=claude-haiku-4-5-20251001` (비용 옵션, **stretched**)
   - `SUPERVISOR_MODEL_ID=claude-sonnet-4-6`
 - **관측성 (선택, 거의 공짜)**: `OTEL_RESOURCE_ATTRIBUTES=service.name=<agent>` + `AGENT_OBSERVABILITY_ENABLED=true` 설정 시 CloudWatch GenAI Observability에 에이전트별 자동 표시
 - **저장소** (택1):
@@ -167,8 +171,8 @@ T+8m     Orchestrator — 종합 → 진단 리포트 자동 commit + 권고 액
   - 개발 편의용 `.env` (gitignore)
 - **부트스트랩 (2-스크립트 분리)**:
   - `bootstrap.sh` — dev 환경: `uv sync` → `.env` 생성 → GitHub PAT를 SSM SecureString에 저장 + GitHub API 검증
-  - `deploy.py` — AWS 인프라 배포 (CloudFormation, Cognito, AgentCore Runtime, Gateway). A2A 샘플에서 차용 후 4개 Runtime + 3 Target으로 확장
-  - AgentCore Memory 사용 여부는 Phase 4~5에서 결정 (현재 plan에 미정)
+  - `agents/{monitor,incident,monitor_a2a,incident_a2a,supervisor}/runtime/deploy_runtime.py` — 각 Runtime 별 toolkit-driven 배포 (CloudFormation 은 Phase 0/2/4 의 infra/, Runtime 자체는 toolkit 자동)
+  - AgentCore Memory 사용 여부는 stretched phase 또는 후속에서 결정 (현재 plan 에 미정)
 - **언어·도구**:
   - Python 3.12+
   - `uv` — 로컬 의존성 관리
