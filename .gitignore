@@ -40,6 +40,9 @@ Thumbs.db
 
 # Logs
 *.log
+# Phase 6a — deployments/incidents 의 .log 는 컨텐츠 (Change Agent 가 read/write 대상)
+!deployments/*.log
+!incidents/*.log
 
 # Project-specific
 diagnosis/*.md

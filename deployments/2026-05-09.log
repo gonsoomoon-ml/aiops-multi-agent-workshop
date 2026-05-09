@@ -1,0 +1,23 @@
+## 2026-05-09 09:12 [auth-service] deploy
+- commit: a3f217b
+- author: alice@example.com
+- status: success
+- summary: 로그인 rate limit 50→100 RPS 상향 (성능 개선)
+
+## 2026-05-09 11:45 [search-service] deploy
+- commit: c8b1e0d
+- author: bob@example.com
+- status: success
+- summary: ElasticSearch index refresh interval 1s→5s 조정
+
+## 2026-05-09 14:25 [payment-service] deploy
+- commit: 7d9e4a2
+- author: charlie@example.com
+- status: success
+- summary: 결제 처리 worker pool size 8→4 축소 (메모리 절감 실험)
+
+## 2026-05-09 16:03 [notification-service] deploy
+- commit: 2f1c5b8
+- author: dora@example.com
+- status: success
+- summary: 푸시 알림 retry policy backoff exponential 도입
