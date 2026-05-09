@@ -14,6 +14,7 @@
 - [7. 왜 그냥 REST API 안 쓰고 A2A?](#7-왜-그냥-rest-api-안-쓰고-a2a)
 - [8. 우리 코드에서 A2A 가 보이는 곳](#8-우리-코드에서-a2a-가-보이는-곳)
 - [9. 핵심을 한 그림으로](#9-핵심을-한-그림으로)
+- [10. AWS canonical 패턴 — `serve_a2a` + `LazyExecutor`](#10-aws-canonical-패턴--serve_a2a--lazyexecutor-bedrock-agentcore-best-practice)
 - [참고 자료](#참고-자료)
 
 ---
@@ -296,16 +297,18 @@ Supervisor (caller)
   └── @tool def call_incident(query): ...
         └── (동일)
 
-Monitor / Incident / Change (server)
+Monitor / Incident (server, A2A protocol)
   │
-  ├── Strands Agent + tools + system_prompt    ← Phase 3/4 그대로
+  ├── Strands Agent + tools + system_prompt    ← Phase 3/4 logic 직접 재사용
   │
-  └── A2AServer(agent=...).to_fastapi_app()    ← Strands 가 한 줄로 wrap
-        └── /                  ← message/send
-        └── /.well-known/agent-card.json  ← 자동 광고
+  └── serve_a2a(LazyExecutor())                ← AgentCore SDK 가 Bedrock-specific glue 자동 처리
+        ├── /                                  ← message/send
+        ├── /.well-known/agent-card.json       ← AgentCard 자동 도출
+        └── /ping                              ← health endpoint
+        + BedrockCallContextBuilder            ← workload-token 헤더 → ContextVar
 ```
 
-**우리가 짜는 것은 `@tool` wrapper 3개 + 기존 entrypoint 를 `A2AServer` 로 교체하는 것**. 나머지는 SDK 와 AgentCore 가 처리.
+**우리가 짜는 것은 `@tool` wrapper 2개 (Supervisor 측) + LazyExecutor 서브클래스 (sub-agent 측)**. AgentCore SDK 가 Bedrock-specific glue 자동 처리 (header propagation, AgentCard, /ping, port 9000).
 
 ---
 
@@ -329,6 +332,101 @@ Monitor / Incident / Change (server)
 ```
 
 A2A 는 결국 **"agent 들이 서로를 호출할 때 위 4가지를 약속한 것"**. 그 이상도 이하도 아님. 우리는 SDK (`strands.multiagent.a2a` + `a2a-sdk`) 가 제공하는 helper 로 직접 wire format 을 짤 일 거의 없음.
+
+---
+
+## 10. AWS canonical 패턴 — `serve_a2a` + `LazyExecutor` (Bedrock AgentCore best practice)
+
+OAuth-dependent A2A sub-agent 의 정답. `agentcore create --protocol A2A` CLI 가 scaffolding 하는 정확한 패턴.
+
+### 왜 `Strands A2AServer.to_fastapi_app()` 단독으로는 부족한가
+
+```python
+# ❌ 처음 우리가 시도 (잘못된 패턴)
+from strands.multiagent.a2a import A2AServer
+
+# 1. module init: workload-token 없음 → ValueError
+agent = _build_agent_with_oauth_tools()  # ← @requires_access_token 호출 → 실패
+
+a2a_server = A2AServer(agent=agent, http_url=..., serve_at_root=True)
+app.mount("/", a2a_server.to_fastapi_app())
+```
+
+**문제 1**: Strands `A2AServer` 가 `BedrockCallContextBuilder` 미부착 → A2A 요청의 `x-amzn-bedrock-agentcore-runtime-workload-accesstoken` 헤더 → `BedrockAgentCoreContext` ContextVar 전달 안 됨. `requires_access_token` decorator 가 ContextVar 에서 token 못 찾음.
+
+**문제 2**: agent 가 module init 시 빌드됨 → workload-token 자체가 inbound request 후에야 set 되므로 timing mismatch.
+
+### ✅ AWS 공식 답: `serve_a2a` + `LazyExecutor`
+
+```python
+from bedrock_agentcore.runtime import serve_a2a
+from bedrock_agentcore.identity.auth import requires_access_token
+from strands import Agent
+from strands.multiagent.a2a.executor import StrandsA2AExecutor
+
+
+@requires_access_token(provider_name=..., scopes=[...], auth_flow="M2M", into="access_token")
+async def _fetch_token(*, access_token: str = "") -> str:
+    return access_token
+
+
+async def _build_real_agent() -> Agent:
+    token = await _fetch_token()        # ← request 시점 (ContextVar 채워진 후)
+    # MCPClient + tools + Strands Agent ...
+    return agent
+
+
+class LazyExecutor(StrandsA2AExecutor):
+    """첫 request 시 real agent build — module init 시 workload-token 없음 회피."""
+
+    def __init__(self):
+        # placeholder: AgentCard 는 init 시 도출되지만 caller 는 url 만 필요
+        placeholder = Agent(name=..., description=..., tools=[])
+        super().__init__(agent=placeholder)
+        self._built = False
+
+    async def execute(self, context, event_queue):
+        if not self._built:
+            self.agent = await _build_real_agent()  # ← 첫 request 시 real swap
+            self._built = True
+        await super().execute(context, event_queue)
+
+
+if __name__ == "__main__":
+    serve_a2a(LazyExecutor(), port=9000)    # AWS-blessed wrapper
+```
+
+### `serve_a2a` 가 자동 제공
+
+| 책임 | 처리 |
+|---|---|
+| `/ping` health endpoint | 자동 |
+| AgentCard at `/.well-known/agent-card.json` | 자동 (executor.agent.tool_registry 에서 도출) |
+| `AGENTCORE_RUNTIME_URL` env → AgentCard `url` | 자동 |
+| `BedrockCallContextBuilder` (header → ContextVar) | **자동** ← `requires_access_token` decorator 작동의 핵심 |
+| port 9000 + Docker host detection | 자동 |
+
+### LazyExecutor 의 의도
+
+- **module init 시점**: workload-token 미존재 (incoming request 후에야 set)
+- **`StrandsA2AExecutor` 가 정적 agent 받음** → init 시 placeholder
+- **첫 request 시 ContextVar 채워짐** → `requires_access_token` decorator 작동 → real agent build → `self.agent` swap
+- 이후 request: cached real agent 재사용
+
+### Trade-off — 다른 패턴들
+
+| 패턴 | 적합한 상황 | LoC |
+|---|---|---|
+| `Strands A2AServer.to_fastapi_app()` 단독 | OAuth 미사용 sub-agent (mock @tool 만) | 가장 짧음 |
+| **`serve_a2a + LazyExecutor` (Recommended)** | OAuth-dependent sub-agent (Cognito M2M Gateway) | ~60 LoC |
+| `A2AStarletteApplication` + custom `AgentExecutor` | per-session agent 격리 (actor_id 별 다른 agent) 필요 시 | ~150 LoC |
+
+→ **AWS docs 가 명시 권장**: `serve_a2a(StrandsA2AExecutor(agent))` (1-line scaffold) — agent 가 OAuth 미사용 시. OAuth 사용 시 `LazyExecutor` 서브클래스 추가.
+
+### 본 프로젝트 적용
+
+- `agents/monitor_a2a/runtime/agentcore_runtime.py` + `agents/incident_a2a/runtime/agentcore_runtime.py` 둘 다 본 패턴.
+- 검증 (2026-05-09): end-to-end smoke test 통과 (42.1초, 7,008 tokens) — Operator → Supervisor → Monitor → Incident 의 4-hop chain 정상 작동.
 
 ---
 
