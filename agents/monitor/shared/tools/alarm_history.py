@@ -1,6 +1,6 @@
 """Strands @tool wrappers — Phase 1 frozen baseline path.
 
-mock_data 의 두 단위 함수를 1:1 매핑하는 두 개의 @tool. Phase 2 mode=past
+data/mock 의 두 단위 함수를 1:1 매핑하는 두 개의 @tool. Phase 2 mode=past
 Gateway 도구와 도구 명·응답 shape 가 동일 — `run_local_import.py` (baseline) 와
 Phase 2 mode=past 가 같은 system_prompt 를 공유 가능.
 """
@@ -8,7 +8,7 @@ from typing import Dict, List
 
 from strands import tool
 
-from mock_data.phase1.alarm_history import (
+from data.mock.phase1.alarm_history import (
     get_past_alarm_history as _mock_get_past_alarm_history,
     get_past_alarms_metadata as _mock_get_past_alarms_metadata,
 )

@@ -81,7 +81,7 @@ async def _amain(mode: str, query: str) -> None:
 def main() -> None:
     load_dotenv()
     if not os.environ.get("GATEWAY_URL"):
-        raise SystemExit("[error] GATEWAY_URL 미설정. infra/phase2/deploy.sh 실행 후 .env 갱신 필요.")
+        raise SystemExit("[error] GATEWAY_URL 미설정. infra/cognito-gateway/deploy.sh 실행 후 .env 갱신 필요.")
 
     parser = argparse.ArgumentParser(description="Monitor Agent — Phase 2 current (Gateway MCP)")
     parser.add_argument(

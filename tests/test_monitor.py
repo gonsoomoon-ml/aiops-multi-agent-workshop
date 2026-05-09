@@ -9,7 +9,7 @@ from collections import Counter
 
 import pytest
 
-from mock_data.phase1.alarm_history import (
+from data.mock.phase1.alarm_history import (
     ALARMS,
     HISTORY,
     get_past_alarms_metadata,

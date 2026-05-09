@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # teardown.sh — Phase 4 Incident Runtime + 의존 자원 reverse 순서 삭제 (P4-A5 의 일부).
 # Phase 3 Monitor Runtime / Phase 2 Cognito stack / Gateway / Lambda × 2 미터치.
-# GitHub Lambda 는 별 teardown (`infra/phase4/teardown.sh`) — 본 스크립트 범위 밖.
+# GitHub Lambda 는 별 teardown (`infra/github-lambda/teardown.sh`) — 본 스크립트 범위 밖.
 # reference: phase4.md §6-2 + phase3.md §9 (Monitor teardown 동일 골격).
 set -euo pipefail
 
@@ -124,4 +124,4 @@ else
 fi
 
 echo -e "${GREEN}=== ✅ Phase 4 Incident teardown 완료 ===${NC}"
-echo -e "${YELLOW}NOTE: GitHub Lambda + Target 은 'bash infra/phase4/teardown.sh' 로 별도 정리${NC}"
+echo -e "${YELLOW}NOTE: GitHub Lambda + Target 은 'bash infra/github-lambda/teardown.sh' 로 별도 정리${NC}"

@@ -1,5 +1,7 @@
 # Phase 6a — Supervisor + Change Agent + A2A 활성화
 
+> 📍 **참고**: `plan_summary.md` 에서 이 phase 는 **Phase 5** 로 재번호 (2026-05-09) — 옛 Phase 5 (NL Policy) 가 stretched 로 이동, Phase 6b 폐기로 인한 정리. 파일명 / commit / 코드 디렉토리 (`agents/*_a2a/`) 는 역사 보존을 위해 `6a` 그대로 유지.
+
 > Phase 4 (`docs/design/phase4.md`) 가 multi-agent 진입을 sequential CLI 로 시연한 후, 이 단계에서 **Supervisor Runtime + Change Agent Runtime + A2A 프로토콜 (server + caller 양쪽)** + **Cognito Client A/B** + **deployments-storage Lambda** 를 추가한다.
 > Phase 5 (AgentCore NL Policy) 는 본 프로젝트 scope 에서 **건너뜀** — Phase 4 → Phase 6a 직행. Phase 5 결정에 묶여있던 항목 (incidents/ log, AgentCore Memory) 은 §1 에서 재배치.
 > Phase 0/2/3/4 자원 (Cognito UserPool, Client C, Gateway, 3 Target, Lambda × 3, Monitor + Incident Runtime) 은 **무변경** — Phase 6a PR 영향 범위 격리, 회귀 0건 목표.
@@ -66,7 +68,7 @@
 - **Phase 4 sequential CLI 의 deprecation 처리** — Phase 4 Step D 가 미구현이므로 deprecate 할 코드 자체가 없음. Supervisor 가 단일 multi-agent 경로 (D7)
 - **S3 fallback** — GitHub 만으로 충분한 시점까지 미룸
 
-→ Phase 6a PR 영향 범위 = `agents/{supervisor,change,operator}/` 신규 + `infra/phase6a/{cognito_extras,deployments_lambda}.yaml` 신규 + Monitor/Incident `agentcore_runtime.py` 에 A2A server wrap 추가 + 두 Runtime 재배포 (코드 변경분 반영) + `runbooks/` 또는 `deployments/` 컨텐츠 minimal seed.
+→ Phase 6a PR 영향 범위 = `agents/{supervisor,change,operator}/` 신규 + `infra/phase6a/{cognito_extras,deployments_lambda}.yaml` 신규 + Monitor/Incident `agentcore_runtime.py` 에 A2A server wrap 추가 + 두 Runtime 재배포 (코드 변경분 반영) + `data/runbooks/` 또는 `deployments/` 컨텐츠 minimal seed.
 
 **Cognito UserPool / Client C / Resource Server / Gateway / 기존 3 Target / Lambda × 3 / IAM Roles 모두 미터치.** 신규 Cognito Client A/B 는 별 CFN stack (`aiops-demo-${user}-phase6a-cognito-extras`) 으로 격리.
 
@@ -114,7 +116,7 @@ phase4.md §1 의 의사결정 로그 패턴 따라.
 | **D2** | A2A 프로토콜 활성화 범위 | **server (Monitor/Incident/Change 3개) + caller (Supervisor)** | (b) caller 만 (sub-agents 는 SIGV4 그대로) / (c) server 만 (CLI 가 A2A 호출) | resource.md §1 의 "Phase 6a Supervisor 변환 시 핵심 참조" 약속 + Phase 4 D2 ("server-only 는 dead code") 의 정합. Supervisor 가 등장하는 시점 = caller 출현 시점 = server 도 의미 있는 시점 |
 | **D3** | Cognito Client A (operator → Supervisor) | **신규 발급 — UserPasswordAuth grant + 워크샵 prefix user** | (b) Authorization Code with PKCE / (c) Client C 재사용 | 워크샵 단순성 — operator CLI 가 username/password 로 1줄 prompt 후 JWT 획득. PKCE 는 browser 흐름 → CLI 불편. Client C 재사용 시 audience/scope 충돌 (Gateway 용) |
 | **D4** | Cognito Client B (Supervisor M2M → sub-agents) | **신규 발급 — client_credentials grant + 신규 scope `agent-invoke`** | (b) Client C 재사용 (Gateway scope `/invoke` 도 부여) / (c) Client A 재사용 | Client C 의 scope `aiops-demo-${user}-resource-server/invoke` 는 Gateway 전용 — sub-agent A2A audience 와 분리 필요. 신규 scope `agent-invoke` 로 audience 격리 → 권한 누출 방지. Client A 는 user-bound 토큰이라 M2M 부적합 |
-| **D5** | deployments storage 분리 | **신규 Lambda + 신규 Gateway Target** | (b) github-storage Lambda 에 `get_deployments_log` tool 추가 / (c) S3 직접 read | user 결정 ("keep original"). plan_summary 의 architecture diagram 도 GitHub Target 1개 (`rules/ runbooks/ deployments/`) 통합 묘사이지만, **권한 분리 + Change Agent 의 caller 격리** + 향후 write 권한 확장 여지 (D6) 를 위해 분리. educational scope memory 는 plumbing 추상화 — 그러나 **agent 별 도구 분리**는 plumbing 이 아니라 architecture decision 영역 |
+| **D5** | deployments storage 분리 | **신규 Lambda + 신규 Gateway Target** | (b) github-storage Lambda 에 `get_deployments_log` tool 추가 / (c) S3 직접 read | user 결정 ("keep original"). plan_summary 의 architecture diagram 도 GitHub Target 1개 (`rules/ data/runbooks/ deployments/`) 통합 묘사이지만, **권한 분리 + Change Agent 의 caller 격리** + 향후 write 권한 확장 여지 (D6) 를 위해 분리. educational scope memory 는 plumbing 추상화 — 그러나 **agent 별 도구 분리**는 plumbing 이 아니라 architecture decision 영역 |
 | **D6** | Change Agent 권한 범위 | **read deployments + write incidents/ + 적절한 추가 write (full where appropriate)** | (b) read-only / (c) read + 명시적 1 tool write | user 결정. workshop 청중에게 "Agent 가 read-only 가 아니라 write 도 할 수 있다" 는 educational 가치 + Change Agent 의 본질 (변경 추적/롤백 결정) 이 read-only 로는 불완전 |
 | **D7** | Phase 4 sequential CLI 처리 | **본 design 에서 다루지 않음** — Step D 가 미구현이므로 deprecate 할 코드 없음. Supervisor 가 단일 multi-agent 경로 | (b) sequential CLI 별도 유지 (educational 비교용) / (c) `--legacy-sequential` 옵션 | user 결정. 기존 코드 부재 + Supervisor 가 LLM-driven 으로 routing 시연 → CLI hardcoded routing 과 비교 가치는 design doc §0-4 의 "진화 line-level 비교" 로 충분 |
 | **D8** | Sub-agent 호출 패턴 (caller 측) | **`@tool` 함수 N개로 wrap — 각 tool 이 `a2a.client.A2AClient.send_message()` 직접 호출** | (b) `Agent(sub_agents=[RemoteA2aAgent(...)])` — **Strands 미지원 (existence 확인)** / (c) `strands_tools.A2AClientToolProvider` — generic `target_agent_url` 노출, 덜 ergonomic | research 결과: Strands `Agent.__init__` 에 `sub_agents` 파라미터 자체 없음. `RemoteA2aAgent` 는 Google ADK 전용. Strands 표준은 sub-agent 를 *도구로 노출* — `@tool` wrapper. 이름이 의도된 (`call_monitor`, `call_incident`, `call_change`) tool 이 LLM routing 에 더 명확. Reference: `02-use-cases/A2A-realestate-agentcore-multiagents/realestate_coordinator/agent.py:325-361` |
@@ -273,7 +275,7 @@ D10 (Memory 보류)                  — Phase 7+ 재이월
 
 → **agent name**: `aiops_demo_${DEMO_USER}_incident_a2a`. Helper 의 출처는 **`monitor_a2a/shared`** (Phase 4 monitor/shared 가 아님 — preservation 위해 격리).
 
-#### `runbooks/` 또는 `deployments/`
+#### `data/runbooks/` 또는 `deployments/`
 | 파일 | 분량 | 역할 |
 |---|---|---|
 | `deployments/README.md` | ~30 줄 | 디렉토리 구조 + 형식 |
@@ -572,11 +574,11 @@ D6 결정: "if proper, give all permission" — Change Agent 가 *적절한* 모
 |---|---|---|
 | `deployments/` read | ✅ | Change 의 본질적 책임 |
 | `incidents/` append (write) | ✅ | 사고 사후 기록 — Change 의 자연스러운 outcome |
-| `runbooks/` read | ❌ | Incident 의 영역 — 책임 분리 |
+| `data/runbooks/` read | ❌ | Incident 의 영역 — 책임 분리 |
 | `deployments/` write | ❌ | 배포 자체는 외부 시스템 — workshop scope 외 |
 | Lambda invoke (Gateway 외) | ❌ | Gateway 만 통한 도구 호출 (C2 원칙 보존) |
 
-→ "full where appropriate" = 책임 영역 (deployments + incidents) 안에서 read+write 모두 허용. 책임 외 (runbooks/, 외부 배포) 는 명시 차단.
+→ "full where appropriate" = 책임 영역 (deployments + incidents) 안에서 read+write 모두 허용. 책임 외 (data/runbooks/, 외부 배포) 는 명시 차단.
 
 ---
 
@@ -1042,8 +1044,8 @@ bash infra/phase6a/teardown.sh
 | `/home/ubuntu/amazon-bedrock-agentcore-samples/02-use-cases/A2A-multi-agent-incident-response/host_adk_agent/agent.py:43-63` | `requires_access_token(provider_name=..., auth_flow="M2M", into="bearer_token", force_authentication=True)` 데코레이터 사용 패턴 — §3-3 의 `_fetch_a2a_token` (Google ADK 코드지만 데코레이터는 SDK 무관) |
 | `/home/ubuntu/developer-briefing-agent/` | dba 패턴 — Supervisor/Change 의 `shared/agent.py + prompts/` 분리, intuitive function naming, deploy_runtime.py 5단계 |
 | `/home/ubuntu/sample-deep-insight/managed-agentcore/` | per-agent 모델 분리 (Supervisor/Change 가 별 MODEL_ID env), OTEL service.name 자동 |
-| Phase 4 `infra/phase4/github_lambda.yaml` | `infra/phase6a/deployments_lambda.yaml` 의 cross-stack policy 패턴 |
-| Phase 4 `infra/phase4/setup_github_target.py` | `infra/phase6a/setup_deployments_target.py` 의 create-or-update 패턴 (A1 fix) |
+| Phase 4 `infra/github-lambda/github_lambda.yaml` | `infra/phase6a/deployments_lambda.yaml` 의 cross-stack policy 패턴 |
+| Phase 4 `infra/github-lambda/setup_github_target.py` | `infra/phase6a/setup_deployments_target.py` 의 create-or-update 패턴 (A1 fix) |
 | `docs/research/a2a_intro.md` | 본 phase 의 A2A 개념 사전 학습 자료 — workshop 청중이 본 design 읽기 전 권장 |
 
 **~~기존 차용 (deprecated by research)~~**:
@@ -1097,7 +1099,7 @@ aiops-multi-agent-demo/
 │   ├── phase2/         # Phase 2 cognito + 2 Lambda
 │   ├── phase4/         # Phase 4 github_lambda
 │   └── phase6a/        # ★ 신규 — cognito_extras + deployments_lambda + Operator user
-├── runbooks/           # Phase 4 partial (Phase 6a 보강 시 noisy-cpu.md 등 추가)
+├── data/runbooks/           # Phase 4 partial (Phase 6a 보강 시 noisy-cpu.md 등 추가)
 ├── deployments/        # ★ Phase 6a — 24h 배포 로그 minimal seed
 ├── incidents/          # ★ Phase 6a 첫 등장 — Change 가 append (write)
 └── docs/design/

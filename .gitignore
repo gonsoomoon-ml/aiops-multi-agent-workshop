@@ -45,10 +45,10 @@ Thumbs.db
 diagnosis/*.md
 !diagnosis/.gitkeep
 
-# Phase 2: mock_data copied into Lambda zip at deploy time (deploy.sh populates, teardown.sh cleans)
-infra/phase2/lambda/history_mock/mock_data/
+# Phase 2: data/mock copied into Lambda zip at deploy time (deploy.sh populates, teardown.sh cleans)
+infra/cognito-gateway/lambda/history_mock/data/
 # Phase 2: cfn package output
-infra/phase2/cognito.packaged.yaml
+infra/cognito-gateway/cognito.packaged.yaml
 
 # Phase 3: deploy_runtime.py step [0] copies shared/ into build context (gitignored)
 agents/monitor/runtime/shared/
@@ -61,7 +61,7 @@ agents/incident/runtime/incident_shared/
 # Phase 4: bedrock_agentcore_starter_toolkit auto-generates this config file
 agents/incident/runtime/.bedrock_agentcore.yaml
 # Phase 4: cfn package output
-infra/phase4/github_lambda.packaged.yaml
+infra/github-lambda/github_lambda.packaged.yaml
 
 # Phase 6a: agent runtime/ build context (deploy_runtime.py copies shared/ in)
 agents/monitor_a2a/runtime/shared/

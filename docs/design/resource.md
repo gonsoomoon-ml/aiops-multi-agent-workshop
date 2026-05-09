@@ -19,11 +19,11 @@
 - URL: https://github.com/gonsoomoon-ml/ec-customer-support-e2e-agentcore
 - **2026-05-04 카테고리 변경**: 학습용 → 베이스 코드 (직접 차용). Phase 2 Section 3 hybrid design 의 핵심 패턴 제공
 - **Phase 2 차용**:
-  - `notebooks/lab-03-agentcore-gateway.ipynb` Step 5 (Gateway 생성) → `infra/phase2/setup_gateway.py:step1_create_gateway`. notebook → Python script 화. SSM parameter store 조회 → CFN outputs export 로 대체
+  - `notebooks/lab-03-agentcore-gateway.ipynb` Step 5 (Gateway 생성) → `infra/cognito-gateway/setup_gateway.py:step1_create_gateway`. notebook → Python script 화. SSM parameter store 조회 → CFN outputs export 로 대체
   - Lab 03 Step 6 (Lambda 함수 대상 추가) → `setup_gateway.py:step2_create_target` × 2 호출. notebook single target → 우리 2 targets (cloudwatch_wrapper + history_mock)
   - Lab 03 의 idempotency 패턴 (`list_gateways` → 매칭 → 재사용) → `setup_gateway.py` step1/step2 의 idempotent 분기
   - Lab 03 의 `gateway_client = boto3.client("bedrock-agentcore-control")` → 동일
-  - Lab 09 (cleanup) 의 `delete_gateway_target` + `delete_gateway` 패턴 → `infra/phase2/cleanup_gateway.py` (역순 — target 먼저 삭제)
+  - Lab 09 (cleanup) 의 `delete_gateway_target` + `delete_gateway` 패턴 → `infra/cognito-gateway/cleanup_gateway.py` (역순 — target 먼저 삭제)
 - **Educational core**: step-by-step print 패턴 (`print(f"\n=== Step N: ... ===")`) — audience 한 줄씩 따라가며 AgentCore 학습. setup_gateway.py 도 동일 패턴 유지
 
 ### 3. developer-briefing-agent — 폴더 구조 + 로컬↔Runtime + 부트스트랩
@@ -53,8 +53,8 @@
 
 | 자원 | 신규 사유 |
 |---|---|
-| `infra/phase2/lambda/cloudwatch_wrapper/handler.py` | Intent shape Lambda — Smithy 폐기 결정 (phase2.md Section 4). 산업 표준 패턴 (DevOps Guru, Watson AIOps) 참고는 했지만 코드 차용 0 |
-| `infra/phase2/lambda/history_mock/handler.py` | Phase 1 mock 데이터를 Lambda 로 wrap (Section 5) — 신규 |
+| `infra/cognito-gateway/lambda/cloudwatch_wrapper/handler.py` | Intent shape Lambda — Smithy 폐기 결정 (phase2.md Section 4). 산업 표준 패턴 (DevOps Guru, Watson AIOps) 참고는 했지만 코드 차용 0 |
+| `infra/cognito-gateway/lambda/history_mock/handler.py` | Phase 1 mock 데이터를 Lambda 로 wrap (Section 5) — 신규 |
 | `agents/monitor/shared/auth/cognito_token.py` | Phase 2 transitional helper (Section 6-5). Cognito client_credentials POST + 1h cache. Phase 3 PR 에서 통째 삭제 |
 | `agents/monitor/shared/mcp_client.py` | Strands MCPClient factory (Section 6-4). transport callable 패턴 — A2A 의 `create_gateway_client()` 와 유사하지만 token 인자 처리 transitional |
 | `agents/monitor/local/run.py --mode {past,live}` 분기 | 이슈 4 결정 (P2-A3 와 P2-A4/A5 검증 격리) — 차용 없음 |

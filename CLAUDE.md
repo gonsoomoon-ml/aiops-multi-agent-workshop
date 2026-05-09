@@ -42,7 +42,7 @@ def _get_token() -> str:
 
 ## 3. Phase preservation rule
 
-이전 phase 의 코드 (`agents/monitor/`, `agents/incident/`, `infra/phase2~4/`, etc.) 는 후속 phase 작업 중 **수정 금지**. 새 phase 의 코드는 신규 디렉토리 (예: `agents/monitor_a2a/`, `agents/incident_a2a/`) 로 작성.
+이전 phase 의 코드 (`agents/monitor/`, `agents/incident/`, `infra/{ec2-simulator,cognito-gateway,github-lambda}/`, etc.) 는 후속 phase 작업 중 **수정 금지**. 새 phase 의 코드는 신규 디렉토리 (예: `agents/monitor_a2a/`, `agents/incident_a2a/`) 로 작성.
 
 **의도**: 워크샵 청중이 Phase N-1 (working) 와 Phase N (new pattern) 을 side-by-side 비교 가능하도록.
 

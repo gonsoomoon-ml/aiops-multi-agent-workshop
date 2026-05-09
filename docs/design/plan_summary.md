@@ -38,7 +38,7 @@ T+8m     Orchestrator — 종합 → 진단 리포트 자동 commit + 권고 액
 | 페르소나 | Agent    | 도구                              | 빌드 깊이           |
 | ---- | -------- | ------------------------------- | --------------- |
 | 모니터링 | Monitor  | CloudWatch + GitHub             | Full            |
-| 장애관리 | Incident | GitHub `runbooks/`+`incidents/` | Full            |
+| 장애관리 | Incident | GitHub `data/runbooks/`+`incidents/` | Full            |
 | 변경관리 | Change   | GitHub `deployments/` read      | Light (~50 LoC) |
 
 
@@ -52,7 +52,7 @@ T+8m     Orchestrator — 종합 → 진단 리포트 자동 commit + 권고 액
        ▼
 ┌──────────────────────────────────────────────────────────────┐
 │  Orchestrator                                                │
-│   └─ Supervisor (AgentCore Runtime)  [Phase 6a 필수]         │
+│   └─ Supervisor (AgentCore Runtime)  [Phase 5 필수]          │
 │        Strands Agent + @tool wrapping a2a.client (LLM 라우팅) │
 └──────────────────────────────────────────────────────────────┘
        │  A2A JSON-RPC + Bearer (스타 토폴로지, Cognito Client C 재사용 — Option X)
@@ -72,11 +72,11 @@ T+8m     Orchestrator — 종합 → 진단 리포트 자동 commit + 권고 액
 │   ├─ CloudWatch Target  (Smithy + 실 CloudWatch API)         │
 │   │      ↑ EC2 simulator (now) → EC mall (later)             │
 │   ├─ GitHub Target      (Lambda + PyGithub, 실 repo)         │
-│   └─ history mock Target (Lambda, mock_data/phase1/alarm_history.py)│
+│   └─ history mock Target (Lambda, data/mock/phase1/alarm_history.py)│
 └──────────────────────────────────────────────────────────────┘
        │
        ▼
-[GitHub repo]  rules/ runbooks/ deployments/ diagnosis/ incidents/
+[GitHub repo]  data/{rules/ runbooks/ deployments/ diagnosis/ incidents/}
        ┊  (GitHub 차단 시 fallback)
        ▼
 [S3 bucket]    동일 prefix 구조, Lambda 한 곳만 교체
@@ -86,7 +86,7 @@ T+8m     Orchestrator — 종합 → 진단 리포트 자동 commit + 권고 액
 
 ```
 운영자 → CLI → Supervisor Runtime
-            ↓ SigV4 IAM (Phase 6a Option X — Operator CLI = boto3 invoke_agent_runtime)
+            ↓ SigV4 IAM (Phase 5 Option X — Operator CLI = boto3 invoke_agent_runtime)
         Supervisor → Monitor / Incident (스타 토폴로지)  *Change 는 stretched*
             ↓ A2A JSON-RPC + Bearer (Cognito Client C 재사용 — Option X, allowedClients=[C])
         Sub-agent Runtime
@@ -131,15 +131,15 @@ T+8m     Orchestrator — 종합 → 진단 리포트 자동 commit + 권고 액
 | 2     | Gateway + MCP로 도구 외부화 (CloudWatch native + GitHub) + 라이브 alarm 분류 검증  |
 | 3     | Monitor → AgentCore Runtime + A2A 서버 승격                                |
 | 4     | Incident Agent + GitHub storage Lambda + sequential CLI                  |
-| 6a    | Supervisor + Monitor a2a + Incident a2a + A2A 활성화 (`serve_a2a` + LazyExecutor) + Operator 진입점 (`agents/supervisor/runtime/invoke_runtime.py`) — Cognito Client C 재사용 (Option X), Phase 4 shared/ 직접 재사용 (Option G) |
-| 7     | EC mall 통합 — alarm 확장만으로 동일 시나리오 재현 (외부 의존: 동료 EC mall 완료)         |
+| 5     | Supervisor + Monitor a2a + Incident a2a + A2A 활성화 (`serve_a2a` + LazyExecutor) + Operator 진입점 (`agents/supervisor/runtime/invoke_runtime.py`) — Cognito Client C 재사용 (Option X), Phase 4 shared/ 직접 재사용 (Option G) |
+| 6     | EC mall 통합 — alarm 확장만으로 동일 시나리오 재현 (외부 의존: 동료 EC mall 완료)         |
 
 ### Stretched phase (시간 여유 / workshop 후속 자료)
 
 | 항목 | 산출물                                                       |
 | ----- | --------------------------------------------------------- |
 | Policy | AgentCore Policy 적용 (NL Policy readonly) + 거부 시연 스크립트 — workshop 분량 제약으로 본 phase 에서 우선 제외 |
-| Change | Change Agent + deployments-storage Lambda + Gateway Target + cross-stack policy + `deployments/<date>.log` seed + `incidents/<date>.log` write — Phase 6a 의 일부에서 단순화 위해 분리. Supervisor 의 `call_change` @tool + 3-agent topology 복원 |
+| Change | Change Agent + deployments-storage Lambda + Gateway Target + cross-stack policy + `deployments/<date>.log` seed + `incidents/<date>.log` write — Phase 5 의 일부에서 단순화 위해 분리. Supervisor 의 `call_change` @tool + 3-agent topology 복원 |
 
 
 ---
@@ -193,7 +193,7 @@ T+8m     Orchestrator — 종합 → 진단 리포트 자동 commit + 권고 액
 - EC mall 도착 시 alarm 추가만으로 확장 (Agent 코드 무변경)
 
 **Track B — history mock**
-- `mock_data/phase1/alarm_history.py` — 3가지 진단 유형 검증용 7일치 history (단일 EC2로는 90일 패턴 불가)
+- `data/mock/phase1/alarm_history.py` — 3가지 진단 유형 검증용 7일치 history (단일 EC2로는 90일 패턴 불가)
 - **제공 방식**: history mock Lambda → Gateway Target 3번째로 노출 (CloudWatch native + GitHub + history mock)
 - 데이터 형식: AWS CloudWatch DescribeAlarms / DescribeAlarmHistory 응답 (PascalCase) + 합성 `ack` / `action_taken` (PD 등 incident system fused)
 - Alarm 5건: noise 3 / real 2

@@ -15,7 +15,7 @@
 | Runtime 개수 | 1 (Monitor) | **2 (Monitor + Incident)** |
 | Agent-to-agent 호출 | 없음 (단일 Runtime) | **CLI sequential** — `invoke_runtime.py` 가 Monitor → Incident 순차 boto3 invoke. A2A 프로토콜은 Phase 6a 로 이월 |
 | 도구 Lambda 개수 | 2 (history-mock, cloudwatch-wrapper) | **3** (+ github-storage) |
-| GitHub repo 의 데이터 사용 | 없음 | **Incident 가 `runbooks/` read** |
+| GitHub repo 의 데이터 사용 | 없음 | **Incident 가 `data/runbooks/` read** |
 | Cognito Client | C (Phase 2) — Gateway M2M | **C 그대로** (Phase 4 미터치). Client A/B 는 Phase 6a (Supervisor 도입 시) |
 | Monitor Runtime | Phase 3 그대로 | **무변경** — `@app.entrypoint` 패턴 carry-over, A2A retrofit 은 Phase 6a |
 | Incident Runtime | 없음 | **신규** (`agents/incident/runtime/`) — Phase 3 dba 패턴 그대로 복제 (`@app.entrypoint`) |
@@ -51,7 +51,7 @@
 - **Workflow Orchestrator** — Phase 6b (stretch)
 - **EC mall 통합** — Phase 7
 
-→ Phase 4 PR 영향 범위 = `agents/incident/{shared,runtime}/` 신규 + `infra/phase4/github_lambda.yaml` 신규 + `runbooks/payment-status-check.md` 신규 + Monitor `invoke_runtime.py` 가 sequential pattern 으로 변경 (또는 별 `invoke_sequential.py` 신규).
+→ Phase 4 PR 영향 범위 = `agents/incident/{shared,runtime}/` 신규 + `infra/github-lambda/github_lambda.yaml` 신규 + `data/runbooks/payment-status-check.md` 신규 + Monitor `invoke_runtime.py` 가 sequential pattern 으로 변경 (또는 별 `invoke_sequential.py` 신규).
 
 **Cognito stack / Gateway / Phase 3 IAM Role / Monitor Runtime entrypoint 본문 / Monitor `agentcore_runtime.py` 모두 미터치.**
 
@@ -95,7 +95,7 @@ phase3.md §1 의 의사결정 로그 패턴 따라.
 | **D1** | Incident `shared/` 정책 | **`agent.py` + `prompts/` 만 — 4개 helper 는 monitor `shared/` 직접 import** | (b) 4개 helper 복제 / (c) `agents/_common/` 신규 | dba 의 "single source of truth" 원칙 multi-agent 확장. 중복 회피. (b) 는 prompt 변경 시 두 곳 sync 필요. (c) 는 Phase 3 monitor `shared/` 위치 변경 → 회귀 위험. **Phase 3 build context 평탄화 gotcha 영향**: Incident `deploy_runtime.py` 가 monitor/shared 도 copy (§3-6 참조) |
 | **D2** | A2A 도입 시점 | **server + caller 둘 다 Phase 6a 로 통합 이월** | (a) Phase 4 server-side 양쪽 활성화 (Monitor reconfigure 동반) / (b) Phase 4 Incident 만 server-side (비대칭) | resource.md §1 (line 13-14) 가 RemoteA2aAgent 패턴을 "Phase 6a Supervisor 변환 시 핵심 참조" 로 명시. server-side 만 Phase 4 활성화 시 caller 없는 dead code → workshop 청중에게 "premature 회피" 메시지. plan_summary §134 "smoke test" 는 sequential CLI invoke 로 해석 (CLI 가 caller). Phase 3 회귀 0건 + Cognito stack 미터치 |
 | **D3** | GitHub Lambda Tool 분량 | **Tool 1개 — `get_runbook(alarm_name)`** | (b) 2개 (+ incidents log read) / (c) 3개 (+ deployments log) | P4-A4 acceptance 의 핵심은 1개 read 검증. Phase 5+ 에서 incidents/deployments 추가 (Change Agent 가 deployments 읽는 시점). premature 회피 |
-| **D4** | runbook 호스팅 | **동일 repo `runbooks/payment-status-check.md`** | (b) 별 repo `gonsoomoon-ml/aiops-multi-agent-runbooks` / (c) S3 fallback | 워크샵 독해성 — runbook 이 design doc 옆에 있어야 청중이 끝까지 추적 가능. 별 repo 는 GitHub token + cross-repo 권한 추가 부담. (c) S3 는 plan_summary §85 의 fallback — 정상 경로는 GitHub |
+| **D4** | runbook 호스팅 | **동일 repo `data/runbooks/payment-status-check.md`** | (b) 별 repo `gonsoomoon-ml/aiops-multi-agent-runbooks` / (c) S3 fallback | 워크샵 독해성 — runbook 이 design doc 옆에 있어야 청중이 끝까지 추적 가능. 별 repo 는 GitHub token + cross-repo 권한 추가 부담. (c) S3 는 plan_summary §85 의 fallback — 정상 경로는 GitHub |
 | **D5** | Cognito Client B | **Phase 6 로 미룸 — Phase 4 PR 미터치** | (a) Phase 4 placeholder 생성 | Caller (Supervisor) 가 Phase 6 까지 없음. placeholder 자원도 plan/teardown 부담. premature 회피. phase3.md §12-1 표 "Phase 4 또는 Phase 6" 옵션 활용 |
 | **D6** | AgentCore Memory | **계속 보류 — Phase 5 재평가** | (a) Phase 4 도입 / (b) dormant flag | Phase 4 = A2A 활성화에 집중. cross-agent context 패턴 (Monitor 진단 → Incident 가 prior incident lookup) 이 본격 의미를 가지려면 Phase 5+ 의 incidents/ log 누적이 선행. plan_summary §171 "Phase 4~5 에서 결정" 약속 + Phase 5 로 이월 |
 
@@ -129,7 +129,7 @@ D6 (Memory 보류)            — Phase 5 로 이월
 | D7 (OTEL 포함) | 동일 — Incident 도 동일 OTEL env |
 | D8 (C1 검증 = JSON schema diff) | Incident 는 별 verify 불필요 — Monitor 와 동일 패턴 |
 | D9 (ECR push = `Runtime.launch()`) | 동일 |
-| D10 (단일 폴더 `runtime/`) | Incident 도 동일 — 단, `infra/phase4/github_lambda.yaml` 만 별 폴더 (Lambda 가 `agents/` 외부) |
+| D10 (단일 폴더 `runtime/`) | Incident 도 동일 — 단, `infra/github-lambda/github_lambda.yaml` 만 별 폴더 (Lambda 가 `agents/` 외부) |
 
 → Phase 3 의 패턴이 정착됐기에 Phase 4 의 결정은 **6개 (Phase 3 의 60%)**. 새로운 axis 는 D1/D2 (multi-agent 시점에 처음 등장) 와 D3/D4 (GitHub storage 가 처음 등장) 만.
 
@@ -145,7 +145,7 @@ D6 (Memory 보류)            — Phase 5 로 이월
 | 2 | OAuth2CredentialProvider | `aiops_demo_${DEMO_USER}_incident_gateway_provider` | 1 | 위 deploy 스크립트 (boto3) |
 | 3 | IAM Role (Incident Runtime) | `AmazonBedrockAgentCoreSDKRuntime-...-aiops_demo_${DEMO_USER}_incident-...` | 1 | toolkit 자동 생성 |
 | 4 | IAM inline policy | `Phase4IncidentRuntimeExtras` | 1 | deploy 스크립트 |
-| 5 | Lambda function | `aiops-demo-${DEMO_USER}-github-storage` | 1 | `infra/phase4/github_lambda.yaml` (CFN) |
+| 5 | Lambda function | `aiops-demo-${DEMO_USER}-github-storage` | 1 | `infra/github-lambda/github_lambda.yaml` (CFN) |
 | 6 | Lambda IAM Role | `aiops-demo-${DEMO_USER}-github-storage-role` | 1 | 동일 CFN |
 | 7 | Gateway Target | `github-storage` | 1 | boto3 (Phase 2 패턴 재사용) |
 | 8 | ECR repo | toolkit 자동 (Incident 용) | 1 | `Runtime.launch()` |
@@ -186,18 +186,18 @@ D6 (Memory 보류)            — Phase 5 로 이월
 |---|---|---|
 | `agents/monitor/runtime/invoke_runtime.py` | (변경) | sequential pattern — Monitor invoke 결과의 real_alarms 추출 후 Incident invoke 순차 호출. §5 참조 |
 
-#### `infra/phase4/`
+#### `infra/github-lambda/`
 | 파일 | 분량 | 역할 |
 |---|---|---|
-| `infra/phase4/github_lambda.yaml` | ~80줄 | CFN — Lambda + IAM Role + SSM read 권한 |
-| `infra/phase4/setup_github_target.py` | ~80 LoC | Gateway Target 등록 (Phase 2 패턴 재사용) |
-| `infra/phase4/teardown.sh` | ~20 줄 | Target → Lambda CFN 삭제 |
+| `infra/github-lambda/github_lambda.yaml` | ~80줄 | CFN — Lambda + IAM Role + SSM read 권한 |
+| `infra/github-lambda/setup_github_target.py` | ~80 LoC | Gateway Target 등록 (Phase 2 패턴 재사용) |
+| `infra/github-lambda/teardown.sh` | ~20 줄 | Target → Lambda CFN 삭제 |
 
-#### `runbooks/`
+#### `data/runbooks/`
 | 파일 | 분량 | 역할 |
 |---|---|---|
-| `runbooks/payment-status-check.md` | ~30 줄 | EC2 status check 알람 대응 절차 (Incident 가 read) |
-| `runbooks/README.md` | ~10줄 | runbook 디렉토리 구조 설명 |
+| `data/runbooks/payment-status-check.md` | ~30 줄 | EC2 status check 알람 대응 절차 (Incident 가 read) |
+| `data/runbooks/README.md` | ~10줄 | runbook 디렉토리 구조 설명 |
 
 ### 2-4. 코드 파일 (변경)
 
@@ -388,7 +388,7 @@ from incident_shared.agent import create_agent               # incident truth
 
 ## 4. GitHub storage 상세 (D3, D4)
 
-### 4-1. `infra/phase4/github_lambda.yaml`
+### 4-1. `infra/github-lambda/github_lambda.yaml`
 
 Phase 2 history-mock Lambda 패턴 재사용. CFN:
 
@@ -449,7 +449,7 @@ Resources:
           DEMO_USER: !Ref DemoUser    # alarm_name → alarm_class 변환에 사용 (§4-2)
       Code:
         ZipFile: |
-          # placeholder — `infra/phase4/lambda_src/handler.py` 가 실제 구현
+          # placeholder — `infra/github-lambda/lambda_src/handler.py` 가 실제 구현
           # CFN 배포 후 update-function-code 또는 별 deploy 단계로 코드 교체
           def lambda_handler(event, context):
               return {"error": "placeholder — code not deployed"}
@@ -477,12 +477,12 @@ Outputs:
 
 **Lambda Permission 패턴 (Phase 2 일관)**: Phase 2 의 `GatewayIamRole` 이 Gateway service 가 assume 하는 Role — 이 Role 에 invoke 권한이 있어야 Gateway 가 Lambda 호출 가능. Phase 4 는 Phase 2 stack 을 미터치한 채 동일 Role 에 추가 inline `AWS::IAM::Policy` 를 attach (cross-stack via Role name string). teardown 시 Phase 4 stack 만 삭제해도 Phase 2 Role 보존.
 
-### 4-2. Lambda 코드 (`infra/phase4/lambda_src/handler.py`)
+### 4-2. Lambda 코드 (`infra/github-lambda/lambda_src/handler.py`)
 
 Phase 2 history-mock Lambda 와 동일 dispatch 패턴 (`context.client_context.custom["bedrockAgentCoreToolName"]` 로 분기). Tool 1개:
 
 ```python
-"""GitHub storage Lambda — runbooks/ read."""
+"""GitHub storage Lambda — data/runbooks/ read."""
 import os
 import boto3
 import urllib.request
@@ -517,7 +517,7 @@ def _alarm_class(alarm_name: str) -> str:
     """alarm_name → runbook key (user prefix 제거).
 
     Phase 0 의 alarm 이름 패턴: `payment-${DEMO_USER}-<class>` (예: payment-ubuntu-status-check).
-    runbook 은 user-agnostic 이므로 file 명은 alarm class 만 — `runbooks/payment-<class>.md`.
+    runbook 은 user-agnostic 이므로 file 명은 alarm class 만 — `data/runbooks/payment-<class>.md`.
     """
     demo_user = os.environ.get("DEMO_USER", "ubuntu")
     return alarm_name.replace(f"-{demo_user}-", "-")    # payment-ubuntu-X → payment-X
@@ -531,7 +531,7 @@ def lambda_handler(event, context):
 
     if tool.endswith("get_runbook"):
         alarm_name = params.get("alarm_name", "")
-        path = f"runbooks/{_alarm_class(alarm_name)}.md"   # ← user prefix 제거
+        path = f"data/runbooks/{_alarm_class(alarm_name)}.md"   # ← user prefix 제거
         try:
             content = _fetch_github_file(repo, branch, path)
             return {"runbook_found": True, "path": path, "content": content}
@@ -541,13 +541,13 @@ def lambda_handler(event, context):
     return {"error": f"unknown tool: {tool!r}"}
 ```
 
-**`_alarm_class` 의 역할**: 입력 `alarm_name` 은 full alarm 이름 (`payment-ubuntu-status-check` 처럼 user prefix 포함). runbook file 은 user-agnostic 이므로 path 는 `runbooks/payment-status-check.md` 로 변환. workshop 청중 (`${DEMO_USER}=alice`) 도 같은 runbook 사용 → 데이터 중복 회피.
+**`_alarm_class` 의 역할**: 입력 `alarm_name` 은 full alarm 이름 (`payment-ubuntu-status-check` 처럼 user prefix 포함). runbook file 은 user-agnostic 이므로 path 는 `data/runbooks/payment-status-check.md` 로 변환. workshop 청중 (`${DEMO_USER}=alice`) 도 같은 runbook 사용 → 데이터 중복 회피.
 
 → **분량 ~50 LoC**. Phase 2 history-mock 의 `~80 LoC` 보다 단순.
 
-### 4-3. Gateway Target 등록 — `infra/phase4/setup_github_target.py`
+### 4-3. Gateway Target 등록 — `infra/github-lambda/setup_github_target.py`
 
-Phase 2 의 `infra/phase2/setup_gateway.py` 의 `step2_create_target` 부분을 그대로 차용. Tool schema:
+Phase 2 의 `infra/cognito-gateway/setup_gateway.py` 의 `step2_create_target` 부분을 그대로 차용. Tool schema:
 
 ```python
 TOOL_SCHEMA = [
@@ -565,8 +565,8 @@ TOOL_SCHEMA = [
                     "description": (
                         "Full CloudWatch alarm name (e.g., 'payment-ubuntu-status-check'). "
                         "The Lambda strips the DEMO_USER prefix and fetches "
-                        "runbooks/<alarm-class>.md from GitHub "
-                        "(e.g., runbooks/payment-status-check.md)."
+                        "data/runbooks/<alarm-class>.md from GitHub "
+                        "(e.g., data/runbooks/payment-status-check.md)."
                     ),
                 }
             },
@@ -578,7 +578,7 @@ TOOL_SCHEMA = [
 
 → Phase 2 gotcha 1 (schema strict subset) 적용 — `enum`/`default` 미사용.
 
-### 4-4. `runbooks/payment-status-check.md`
+### 4-4. `data/runbooks/payment-status-check.md`
 
 ```markdown
 # Runbook — payment-ubuntu-status-check
@@ -798,14 +798,14 @@ Phase 4 design 은 RemoteA2aAgent (caller) 와 A2A server-side 를 모두 Phase 
 | **P4-A2** | Incident Runtime 단일 invoke 동작 | `uv run agents/incident/runtime/invoke_runtime.py --alarm payment-ubuntu-status-check` → JSON 응답 (`runbook_found: true`) | ✅ status-check (P1) + noisy-cpu (P2 fallback) 양쪽 정상 응답 |
 | **P4-A3** | Sequential CLI invoke 통합 응답 | `uv run agents/monitor/runtime/invoke_runtime.py --mode live --sequential` → 응답 schema 가 §5-3 형식 (monitor + incident_responses[] 배열, real_alarms 1건 이상에 대해 incident 호출 흔적) | ⏸ **이월 — Step D 미구현, Phase 6a Supervisor + A2A 와 통합 검증** (D5 정렬) |
 | **P4-A4** | GitHub Lambda runbook read 성공 | A3 의 응답 `incident_responses[].recommended_actions` 에 `reboot` 또는 `escalate` 1개 이상 포함 (runbook content 가 LLM 응답에 반영됨) | ✅ Step D 미구현 우회 — Incident 단독 invoke 응답으로 동등 검증. status-check 응답에 `reboot instance` + `escalate to oncall` 모두 포함, runbook 의 진단 절차 / 권장 조치 / Severity 일치 |
-| **P4-A5** | Phase 4 teardown 후 Phase 3 자원 보존 | `infra/phase4/teardown.sh` + `agents/incident/runtime/teardown.sh` 후 — Monitor Runtime / Gateway / Cognito 그대로 | ⏸ pending — 다음 자원 정리 시점에 실측 (review fix A2 fallback discovery / B2 inline policy detach 검증 동반) |
+| **P4-A5** | Phase 4 teardown 후 Phase 3 자원 보존 | `infra/github-lambda/teardown.sh` + `agents/incident/runtime/teardown.sh` 후 — Monitor Runtime / Gateway / Cognito 그대로 | ⏸ pending — 다음 자원 정리 시점에 실측 (review fix A2 fallback discovery / B2 inline policy detach 검증 동반) |
 
 ### 6-1-1. 구현 commit 추적 (2026-05-08)
 
 | commit | 범위 |
 |---|---|
-| `feab3d2` | Step B (`agents/incident/`) + Step C (`infra/phase4/`) 본체 + 구현 중 review fix 5건 (handler `_alarm_class` split-based, setup_github_target update 분기, tool description 정확화, teardown `list-gateways` fallback, teardown inline policy detach 검증) + system_prompt Korean diagnosis 강제 규칙 |
-| `580aca5` | Step E partial — `runbooks/payment-status-check.md` (P4-A4 fetch 대상) |
+| `feab3d2` | Step B (`agents/incident/`) + Step C (`infra/github-lambda/`) 본체 + 구현 중 review fix 5건 (handler `_alarm_class` split-based, setup_github_target update 분기, tool description 정확화, teardown `list-gateways` fallback, teardown inline policy detach 검증) + system_prompt Korean diagnosis 강제 규칙 |
+| `580aca5` | Step E partial — `data/runbooks/payment-status-check.md` (P4-A4 fetch 대상) |
 
 → Step D (sequential CLI) 미구현은 **D5 (A2A 활성화 Phase 6a 이월)** 결정과 일관. Phase 6a 에서 Supervisor + A2A 도입 시 sequential CLI 도 함께 진화 (§7-2 Reference codebase 매핑 참조).
 
@@ -817,11 +817,11 @@ aws ssm put-parameter --name /aiops-demo/github-token --type SecureString \
   --value "$GITHUB_TOKEN" --overwrite
 
 # 2. GitHub Lambda + Target 배포
-aws cloudformation deploy --template infra/phase4/github_lambda.yaml \
+aws cloudformation deploy --template infra/github-lambda/github_lambda.yaml \
   --stack-name aiops-demo-${DEMO_USER}-phase4-github \
   --parameter-overrides DemoUser=${DEMO_USER} \
   --capabilities CAPABILITY_NAMED_IAM
-uv run infra/phase4/setup_github_target.py
+uv run infra/github-lambda/setup_github_target.py
 
 # 3. Incident Runtime 배포
 uv run agents/incident/runtime/deploy_runtime.py
@@ -839,7 +839,7 @@ grep -E "reboot|escalate" /tmp/p4_a3.txt && echo "✅ P4-A4 PASS"   # P4-A4
 
 # 7. teardown 검증 (P4-A5)
 bash agents/incident/runtime/teardown.sh
-bash infra/phase4/teardown.sh
+bash infra/github-lambda/teardown.sh
 # Monitor Runtime / Gateway / Cognito 가 살아있는지 확인
 aws bedrock-agentcore-control list-agent-runtimes | grep monitor
 aws bedrock-agentcore-control list-gateways | grep aiops-demo
@@ -873,10 +873,10 @@ aws bedrock-agentcore-control list-gateways | grep aiops-demo
 |---|---|
 | `agents/incident/runtime/*` | `developer-briefing-agent/managed-agentcore/*` (dba, Phase 3 strict 패턴) |
 | `agents/monitor/runtime/invoke_runtime.py` (sequential 모드) | Phase 3 단일 invoke 함수 + 자체 sequential loop (A2A 샘플 미차용 — Phase 6a 에서 RemoteA2aAgent 도입 시 차용) |
-| `infra/phase4/github_lambda.yaml` | Phase 2 `infra/phase2/cognito.yaml` (Lambda 부분) + ec-customer-support `lab-03` Lambda 패턴 |
-| `infra/phase4/lambda_src/handler.py` | Phase 2 `infra/phase2/lambda_src/history_mock/handler.py` (dispatch 패턴) |
-| `infra/phase4/setup_github_target.py` | Phase 2 `infra/phase2/setup_gateway.py:step2_create_target` |
-| `runbooks/*.md` | (신규 — 청중용 데이터) |
+| `infra/github-lambda/github_lambda.yaml` | Phase 2 `infra/cognito-gateway/cognito.yaml` (Lambda 부분) + ec-customer-support `lab-03` Lambda 패턴 |
+| `infra/github-lambda/lambda_src/handler.py` | Phase 2 `infra/cognito-gateway/lambda_src/history_mock/handler.py` (dispatch 패턴) |
+| `infra/github-lambda/setup_github_target.py` | Phase 2 `infra/cognito-gateway/setup_gateway.py:step2_create_target` |
+| `data/runbooks/*.md` | (신규 — 청중용 데이터) |
 | Incident 의 prompts | A2A 샘플 `monitoring_strands_agent/prompt` (capability 기반 prompt 패턴) |
 | GitHub token SSM 저장 | dba `setup/store_github_token.sh` |
 | (미차용 — Phase 6a) `host_adk_agent/agent.py:37-100` (RemoteA2aAgent), `monitoring_strands_agent/main.py` (A2AStarletteApplication), `monitoring_strands_agent/agent_executor.py` (AgentExecutor) | resource.md §1 line 13-14 의 시점 약속 준수 |
@@ -943,8 +943,8 @@ Phase 5 는 **AgentCore NL Policy 부착** + **Memory 결정** + (선택) **inci
 
 # 변경 파일 (선택, D6 풀릴 시)
 ~ agents/incident/shared/prompts/system_prompt.md   # incidents/ write 추가 instruction
-~ infra/phase4/lambda_src/handler.py                # add_incident_log tool dispatch
-~ infra/phase4/setup_github_target.py               # tool schema 2개로 확장
+~ infra/github-lambda/lambda_src/handler.py                # add_incident_log tool dispatch
+~ infra/github-lambda/setup_github_target.py               # tool schema 2개로 확장
 ~ agents/monitor/runtime/deploy_runtime.py          # Memory hooks (D6 풀릴 시)
 
 # 삭제 파일

@@ -6,9 +6,9 @@ Phase 3 의 Monitor Runtime 패턴 (`agents/monitor/runtime/`) 을 Incident Agen
 
 ## 사전 조건
 
-- **Phase 2 완료** — `infra/phase2/deploy.sh` 통과 + repo root `.env` 채워진 상태.
+- **Phase 2 완료** — `infra/cognito-gateway/deploy.sh` 통과 + repo root `.env` 채워진 상태.
 - **Phase 3 완료** — Monitor Runtime READY + `aiops_demo_${DEMO_USER}_monitor` alive.
-- **Phase 4 Step C 완료 (선결 의존)** — `infra/phase4/github_lambda.yaml` deploy + Gateway Target `github-storage` 등록 + SSM `/aiops-demo/github-token` 에 GitHub PAT 저장.
+- **Phase 4 Step C 완료 (선결 의존)** — `infra/github-lambda/github_lambda.yaml` deploy + Gateway Target `github-storage` 등록 + SSM `/aiops-demo/github-token` 에 GitHub PAT 저장.
 - AWS 자격 증명 + Docker daemon + `uv sync` 완료.
 
 ## 파일 구성
