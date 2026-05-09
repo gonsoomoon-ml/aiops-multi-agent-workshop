@@ -1,0 +1,103 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: |
+  AIOps Multi-Agent Demo — Phase 6a deployments-storage Lambda + cross-stack
+  Gateway invoke permission.
+
+  Phase 4 'github-storage' Lambda 와 동일 cross-stack 패턴 (Phase 2 GatewayIamRole 에
+  inline policy 만 추가). Phase 2/Phase 4 stack 미터치.
+
+  Tools:
+    - get_deployments_log(date)   — read deployments/<date>.log
+    - append_incident(date, body) — write incidents/<date>.log (append)
+
+  reference:
+    - docs/design/phase6a.md §7 (deployments-storage Lambda 상세)
+    - infra/phase4/github_lambda.yaml (cross-stack policy 패턴 정확 차용)
+
+Parameters:
+  DemoUser:
+    Type: String
+    Description: 워크샵 청중 prefix (영문/숫자/하이픈, ≤16자)
+    AllowedPattern: "^[a-zA-Z0-9-]{1,16}$"
+
+  GithubTokenSsmPath:
+    Type: String
+    Default: /aiops-demo/github-token
+    Description: GitHub PAT (repo:write 권한 필요 — incidents append) SSM SecureString path
+
+  GithubRepo:
+    Type: String
+    Default: gonsoomoon-ml/aiops-multi-agent-demo
+    Description: deployments/ + incidents/ 가 들어있는 GitHub repository (`owner/repo`)
+
+  GithubBranch:
+    Type: String
+    Default: main
+    Description: GitHub 브랜치
+
+Resources:
+  # === Lambda IAM Role ================================================
+  DeploymentsStorageLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "aiops-demo-${DemoUser}-deployments-storage-role"
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: SsmReadGithubToken
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: ssm:GetParameter
+                Resource: !Sub "arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter${GithubTokenSsmPath}"
+
+  # === Lambda Function ================================================
+  DeploymentsStorageLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub "aiops-demo-${DemoUser}-deployments-storage"
+      Runtime: python3.13
+      Handler: handler.lambda_handler
+      Code: ./lambda_src/deployments_storage
+      Role: !GetAtt DeploymentsStorageLambdaRole.Arn
+      Timeout: 15
+      MemorySize: 256
+      Environment:
+        Variables:
+          GITHUB_TOKEN_SSM_PATH: !Ref GithubTokenSsmPath
+          GITHUB_REPO: !Ref GithubRepo
+          GITHUB_BRANCH: !Ref GithubBranch
+          DEMO_USER: !Ref DemoUser
+
+  # === Cross-stack Lambda invoke Permission (Phase 4 패턴 동일) =========
+  # Phase 2 의 GatewayIamRole 에 deployments-storage Lambda invoke 권한 inline 추가.
+  # Phase 6a stack 삭제 시 Policy 만 제거, Phase 2 Role 보존. 이름 prefix 'phase6a' 로
+  # Phase 4 의 'phase4' policy 와 격리 — 동시 존재 가능.
+  GatewayInvokeDeploymentsLambdaPolicy:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyName: !Sub "aiops-demo-${DemoUser}-phase6a-gateway-invoke-deployments"
+      Roles:
+        - !Sub "aiops-demo-${DemoUser}-phase2-gateway-role"
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Action: lambda:InvokeFunction
+            Resource: !GetAtt DeploymentsStorageLambda.Arn
+
+Outputs:
+  DeploymentsStorageLambdaArn:
+    Description: deployments-storage Lambda ARN — setup_deployments_target.py 가 read
+    Value: !GetAtt DeploymentsStorageLambda.Arn
+  DeploymentsStorageLambdaName:
+    Description: Lambda 함수 이름
+    Value: !Ref DeploymentsStorageLambda

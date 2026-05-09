@@ -1,0 +1,143 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: |
+  AIOps Multi-Agent Demo — Phase 6a Cognito extras (Client A + Client B + OperatorUser
+  + 새 ResourceServer 'agent-invoke').
+
+  Phase 2 cognito stack 완전 미터치 (preservation rule). UserPoolId 는 Parameter 로
+  주입 (Phase 2 cognito.yaml 이 Export 안 함 → ImportValue 사용 불가, deploy.sh 가
+  describe-stacks 로 query 후 Parameter 전달).
+
+  reference:
+    - docs/design/phase6a.md §6 (Cognito Client A/B 상세)
+    - 02-use-cases/A2A-multi-agent-incident-response/cloudformation/cognito.yaml
+      (multi-Client + ResourceServer + scope 패턴)
+
+Parameters:
+  DemoUser:
+    Type: String
+    Description: 워크샵 청중 prefix (Phase 0/2 와 동일 값)
+    AllowedPattern: "^[a-zA-Z0-9-]{1,16}$"
+
+  UserPoolId:
+    Type: String
+    Description: Phase 2 cognito stack 의 UserPoolId (deploy.sh 가 describe-stacks 로 query)
+
+  OperatorUserEmail:
+    Type: String
+    Description: Operator 사용자 이메일 (workshop 청중 본인 이메일 권장; 알림 발송 안 함)
+    AllowedPattern: "^[^@]+@[^@]+\\.[^@]+$"
+
+Resources:
+  # === 신규 ResourceServer 'agent-invoke' ===========================
+  # Phase 2 의 'aiops-demo-${user}-resource-server/invoke' 와 분리. 의미론:
+  # AgentCore Authorizer 는 scope 검증 안 함 (allowedClients 만) — 본 scope 는
+  # Cognito 측 토큰 발급 정책 분리 + 감사 가시성 위한 hygiene (phase6a.md §6-2).
+  AgentInvokeResourceServer:
+    Type: AWS::Cognito::UserPoolResourceServer
+    Properties:
+      UserPoolId: !Ref UserPoolId
+      Identifier: !Sub "aiops-demo-${DemoUser}-agent-invoke"
+      Name: "Agent A2A Invoke"
+      Scopes:
+        - ScopeName: invoke
+          ScopeDescription: A2A invoke between agents
+
+  # === Client A — Operator user JWT (Supervisor inbound) ==============
+  # USER_PASSWORD_AUTH grant — Operator CLI 가 사용자명/비밀번호로 직접 인증.
+  # PKCE (browser flow) 회피 — CLI 에서 1줄 prompt 로 충분.
+  # GenerateSecret: false — 워크샵 단순성 (SECRET_HASH 계산 불필요).
+  UserPoolClientA:
+    Type: AWS::Cognito::UserPoolClient
+    DependsOn: AgentInvokeResourceServer
+    Properties:
+      ClientName: !Sub "aiops-demo-${DemoUser}-client-a"
+      UserPoolId: !Ref UserPoolId
+      GenerateSecret: false
+      AllowedOAuthFlowsUserPoolClient: true
+      AllowedOAuthFlows:
+        - code
+      AllowedOAuthScopes:
+        - openid
+        - email
+        - profile
+        - !Sub "aiops-demo-${DemoUser}-agent-invoke/invoke"
+      ExplicitAuthFlows:
+        - ALLOW_USER_PASSWORD_AUTH
+        - ALLOW_REFRESH_TOKEN_AUTH
+      SupportedIdentityProviders:
+        - COGNITO
+      CallbackURLs:
+        - http://localhost:8501/
+        - http://localhost:5173/
+      AccessTokenValidity: 60
+      IdTokenValidity: 60
+      RefreshTokenValidity: 30
+      TokenValidityUnits:
+        AccessToken: minutes
+        IdToken: minutes
+        RefreshToken: days
+      EnableTokenRevocation: true
+      PreventUserExistenceErrors: ENABLED
+
+  # === Client B — Supervisor M2M (sub-agent A2A 호출용) =================
+  # client_credentials grant — Supervisor Runtime 의 OAuth provider 가 본 client 의
+  # ID/Secret 으로 token 발급. sub-agent Runtime 의 customJWTAuthorizer.allowedClients
+  # 가 Client B 의 ID 로 검증 — token 의 aud claim 이 매칭.
+  UserPoolClientB:
+    Type: AWS::Cognito::UserPoolClient
+    DependsOn: AgentInvokeResourceServer
+    Properties:
+      ClientName: !Sub "aiops-demo-${DemoUser}-client-b"
+      UserPoolId: !Ref UserPoolId
+      GenerateSecret: true
+      AllowedOAuthFlowsUserPoolClient: true
+      AllowedOAuthFlows:
+        - client_credentials
+      AllowedOAuthScopes:
+        - !Sub "aiops-demo-${DemoUser}-agent-invoke/invoke"
+      ExplicitAuthFlows:
+        - ALLOW_REFRESH_TOKEN_AUTH
+      SupportedIdentityProviders:
+        - COGNITO
+      AccessTokenValidity: 1
+      TokenValidityUnits:
+        AccessToken: hours
+      PreventUserExistenceErrors: ENABLED
+
+  # === Operator user — Client A 가 인증할 사용자 ======================
+  # MessageAction: SUPPRESS + DesiredDeliveryMediums: [] — 이메일 발송 안 함.
+  # 비밀번호는 deploy.sh 에서 boto3 admin-set-user-password 로 별도 설정
+  # (CFN 에 비밀번호 hardcode 회피).
+  OperatorUser:
+    Type: AWS::Cognito::UserPoolUser
+    Properties:
+      UserPoolId: !Ref UserPoolId
+      Username: !Sub "operator-${DemoUser}"
+      MessageAction: SUPPRESS
+      DesiredDeliveryMediums: []
+      UserAttributes:
+        - Name: email
+          Value: !Ref OperatorUserEmail
+        - Name: email_verified
+          Value: "true"
+
+Outputs:
+  ClientAId:
+    Description: Cognito Client A ID (operator USER_PASSWORD_AUTH inbound to Supervisor)
+    Value: !Ref UserPoolClientA
+
+  ClientBId:
+    Description: Cognito Client B ID (Supervisor M2M for A2A outbound to sub-agents)
+    Value: !Ref UserPoolClientB
+
+  AgentInvokeResourceServerId:
+    Description: 신규 ResourceServer identifier (별 namespace from Phase 2 'invoke')
+    Value: !Ref AgentInvokeResourceServer
+
+  AgentInvokeScope:
+    Description: A2A scope 전체 식별자
+    Value: !Sub "aiops-demo-${DemoUser}-agent-invoke/invoke"
+
+  OperatorUserName:
+    Description: Operator user 의 username (Operator CLI 가 USERNAME 으로 사용)
+    Value: !Sub "operator-${DemoUser}"
