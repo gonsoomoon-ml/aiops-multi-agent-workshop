@@ -22,7 +22,8 @@ outbound (Supervisor → 3 sub-agents):
 사전 조건 (Runtime 환경변수):
     - SUPERVISOR_MODEL_ID
     - OAUTH_PROVIDER_NAME — Cognito Client C M2M provider (Phase 4 incident 와 동일 키)
-    - MONITOR_A2A_RUNTIME_ARN, INCIDENT_A2A_RUNTIME_ARN, CHANGE_RUNTIME_ARN — sub-agents
+    - MONITOR_A2A_RUNTIME_ARN, INCIDENT_A2A_RUNTIME_ARN — 2 sub-agents
+      (Change Agent 는 후속 phase 로 연기 — Phase 6a 단순화)
     - DEMO_USER, AWS_REGION
     - OTEL_RESOURCE_ATTRIBUTES, AGENT_OBSERVABILITY_ENABLED
 
@@ -76,7 +77,7 @@ AGENT_NAME = f"aiops_demo_{DEMO_USER}_supervisor"
 
 MONITOR_A2A_ARN = os.environ["MONITOR_A2A_RUNTIME_ARN"]
 INCIDENT_A2A_ARN = os.environ["INCIDENT_A2A_RUNTIME_ARN"]
-CHANGE_ARN = os.environ["CHANGE_RUNTIME_ARN"]
+# Change Agent 는 후속 phase 로 연기 — Phase 6a 는 monitor + incident 두 sub-agent 만
 
 DEFAULT_TIMEOUT = 300
 
@@ -168,12 +169,6 @@ async def call_incident_a2a(query: str) -> str:
     return await _call_subagent(INCIDENT_A2A_ARN, query)
 
 
-@tool
-async def call_change(query: str) -> str:
-    """Change A2A sub-agent 호출 — 24h 배포 회귀 검증 + incident log append. query 는 alarm + severity + diagnosis JSON str."""
-    return await _call_subagent(CHANGE_ARN, query)
-
-
 app = BedrockAgentCoreApp()
 
 
@@ -191,7 +186,7 @@ async def supervisor(payload: dict, context: Any) -> AsyncGenerator[dict, None]:
         return
 
     agent = create_supervisor_agent(
-        tools=[call_monitor_a2a, call_incident_a2a, call_change],
+        tools=[call_monitor_a2a, call_incident_a2a],
         system_prompt_filename="system_prompt.md",
     )
     usage_totals = {

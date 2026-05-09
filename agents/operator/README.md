@@ -13,10 +13,10 @@
    ▼
    Supervisor Runtime (HTTP, no customJWTAuthorizer)
      ├─ Strands Agent + system_prompt (한국어 routing 정책)
-     └─ @tool × 3 → A2A hop (Cognito Client C M2M Bearer)
+     └─ @tool × 2 → A2A hop (Cognito Client C M2M Bearer)
           ├─ monitor_a2a Runtime  (allowedClients=[Client C])
-          ├─ incident_a2a Runtime (allowedClients=[Client C])
-          └─ change Runtime       (allowedClients=[Client C])
+          └─ incident_a2a Runtime (allowedClients=[Client C])
+     (Change Agent 는 후속 phase 로 연기 — Phase 6a 단순화)
    │
    │ 2. SSE 스트림 (text/event-stream)
    ▼
@@ -28,17 +28,15 @@
 ## 사전 조건
 
 1. **Phase 0/2/3/4 deploy 완료**
-2. **Phase 6a Step C 완료** — `bash infra/phase6a/deploy.sh` 통과:
-   - deployments-storage Lambda + Gateway Target 생성
-   - `.env` 에 `DEPLOYMENTS_STORAGE_LAMBDA_ARN` 추가
-3. **Phase 6a Step B Runtime 4개 deploy 완료**:
+2. **Phase 6a Runtime 3개 deploy 완료**:
    ```bash
-   uv run agents/change/runtime/deploy_runtime.py
    uv run agents/monitor_a2a/runtime/deploy_runtime.py
    uv run agents/incident_a2a/runtime/deploy_runtime.py
    uv run agents/supervisor/runtime/deploy_runtime.py    # ← sub-agent ARN cross-load
    ```
-4. **AWS 자격증명** (사용자 IAM Role 에 `bedrock-agentcore:InvokeAgentRuntime` 권한 필요)
+3. **AWS 자격증명** (사용자 IAM Role 에 `bedrock-agentcore:InvokeAgentRuntime` 권한 필요)
+
+> Phase 6a 의 infra/phase6a/ 디렉토리 = **0 stack** (Cognito 는 Option X 로 Phase 2 재사용, Change 는 후속 phase 로 연기). 순수 agent 코드 phase.
 
 ## 사용법
 
@@ -66,8 +64,7 @@ Supervisor `system_prompt.md` 의 schema:
       "alarm": "payment-ubuntu-status-check",
       "diagnosis": "<한국어 1-2 문장>",
       "severity": "P1|P2|P3",
-      "regression_likelihood": "high|medium|low",
-      "incident_logged": true
+      "recommended_actions": ["<영어 동사구>", ...]
     }
   ],
   "next_steps": ["<영어 동사구>", ...]
@@ -88,10 +85,10 @@ AccessDeniedException: User: arn:aws:iam::xxx:user/yyy is not authorized to perf
 
 ### Supervisor Runtime 500 (sub-agent 호출 실패)
 
-→ 보통 sub-agent (monitor_a2a / incident_a2a / change) 의 customJWTAuthorizer.allowedClients 가 Client C 와 매칭 안 됨. 4 Runtime 모두 동일 Client C id 를 보고 있는지:
+→ 보통 sub-agent (monitor_a2a / incident_a2a) 의 customJWTAuthorizer.allowedClients 가 Client C 와 매칭 안 됨. 3 Runtime 모두 동일 Client C id 를 보고 있는지:
 ```bash
 grep COGNITO_CLIENT_C_ID .env
-for r in change monitor_a2a incident_a2a; do
+for r in monitor_a2a incident_a2a; do
   RID=$(aws bedrock-agentcore-control list-agent-runtimes --region us-west-2 \
     --query "agentRuntimes[?agentRuntimeName=='aiops_demo_${USER}_${r}'].agentRuntimeId" \
     --output text)

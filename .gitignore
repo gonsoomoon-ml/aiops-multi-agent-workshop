@@ -40,9 +40,6 @@ Thumbs.db
 
 # Logs
 *.log
-# Phase 6a — deployments/incidents 의 .log 는 컨텐츠 (Change Agent 가 read/write 대상)
-!deployments/*.log
-!incidents/*.log
 
 # Project-specific
 diagnosis/*.md
@@ -65,13 +62,8 @@ agents/incident/runtime/incident_shared/
 agents/incident/runtime/.bedrock_agentcore.yaml
 # Phase 4: cfn package output
 infra/phase4/github_lambda.packaged.yaml
-# Phase 6a: cfn package output
-infra/phase6a/deployments_lambda.packaged.yaml
 
 # Phase 6a: agent runtime/ build context (deploy_runtime.py copies shared/ in)
-agents/change/runtime/shared/
-agents/change/runtime/change_shared/
-agents/change/runtime/.bedrock_agentcore.yaml
 agents/monitor_a2a/runtime/shared/
 agents/monitor_a2a/runtime/.bedrock_agentcore.yaml
 agents/incident_a2a/runtime/shared/

@@ -11,6 +11,8 @@
 > **Preservation rule (2026-05-09)**: workshop instructor 가 Phase 4 (HTTP, 작동) 와 Phase 6a (A2A, 신규) 를 **side-by-side** 비교 가능하도록 `agents/monitor/`, `agents/incident/` 등 이전 phase 코드는 **수정 금지**. Phase 6a 의 Monitor/Incident A2A 변형은 신규 디렉토리 `agents/monitor_a2a/` + `agents/incident_a2a/` 에 작성 (originally §2-4 의 in-place 수정 계획을 폐기). 변경 사항: §2-3 에 두 디렉토리 추가, §2-4 의 monitor/incident 수정 행 제거, Step F 가 retrofit 이 아닌 신규 작성으로 정의 변경.
 >
 > **Option X (2026-05-09 review)**: 사용자 결정 — **새 Cognito 자원 추가 0**. Phase 2 의 Client C 만 재사용 (sub-agent A2A inbound + Supervisor outbound 모두). Operator CLI 는 Phase 4 패턴 SigV4 IAM 그대로. AgentCore `customJWTAuthorizer.allowedClients` 가 토큰의 `aud` (= client_id) 만 검증, scope 미검증 → Gateway scope 토큰이 multiple audience 에 통과. 영향: D3, D4 폐기 (Cognito Client A/B 제거); §6 단순화 (`cognito_extras.yaml` 삭제); §8 단순화 (Operator CLI 가 boto3 SigV4); §2-1 인벤토리 -7 자원 (Cognito Client A + B + ResourceServer + OperatorUser + 2 OAuth provider variant). 약 -325 LoC 단순화.
+>
+> **Change Agent 연기 (2026-05-09 review)**: 사용자 결정 — Change Agent (D6) 는 **후속 phase 로 연기**. Phase 6a 는 *A2A activation* 한 가지 핵심 메시지에 집중. 영향: D5/D6 폐기 (deployments-storage Lambda + Target 삭제); §4 (Change Agent), §7 (deployments-storage Lambda) 무효화; sub-agent 3 → 2 (monitor_a2a + incident_a2a 만); `agents/change/`, `infra/phase6a/`, `deployments/`, `incidents/` 4 디렉토리 삭제; Phase 6a 의 infra/ stack 0 (Phase 0/2/3/4 자원만 사용). 약 -1100 LoC 추가 단순화. Change + write tool + per-agent 모델 분리는 Phase 6b (또는 별 phase) 단독 주제로 배치.
 
 ---
 

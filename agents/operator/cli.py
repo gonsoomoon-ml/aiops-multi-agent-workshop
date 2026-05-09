@@ -20,8 +20,8 @@ Phase 4 의 ``agents/{monitor,incident}/runtime/invoke_runtime.py`` 와 다른 �
     python agents/operator/cli.py --query "alarm payment-ubuntu-status-check 진단"
 
 사전 조건:
-    - Phase 6a Step C 완료 (`bash infra/phase6a/deploy.sh`) — deployments-storage Lambda + Target
-    - Supervisor Runtime 배포 완료 (`agents/supervisor/runtime/.env` 에 SUPERVISOR_RUNTIME_ARN)
+    - Phase 0/2/3/4 deploy 완료 (Phase 2 Cognito + Gateway + 3 Lambda + Phase 3 Monitor + Phase 4 Incident)
+    - Phase 6a Runtime 3개 deploy 완료 (monitor_a2a + incident_a2a + supervisor)
     - AWS 자격증명 + 사용자 IAM Role 에 ``bedrock-agentcore:InvokeAgentRuntime`` 권한
 
 reference:

@@ -1,6 +1,6 @@
 # Supervisor Agent Runtime — Phase 6a
 
-**Multi-agent orchestrator** — 운영자 (Operator CLI) 의 진입을 받아 sub-agent 3개 (monitor_a2a, incident_a2a, change) 를 routing/호출 후 통합 응답.
+**Multi-agent orchestrator** — 운영자 (Operator CLI) 의 진입을 받아 sub-agent 2개 (monitor_a2a, incident_a2a) 를 routing/호출 후 통합 응답. Change Agent 는 후속 phase 로 연기 — Phase 6a 는 **A2A activation** 핵심 메시지에 집중.
 
 ## 구조
 
@@ -30,14 +30,13 @@ async def call_monitor_a2a(query: str) -> str: ...
 @tool
 async def call_incident_a2a(query: str) -> str: ...
 
-@tool
-async def call_change(query: str) -> str: ...
-
 agent = create_supervisor_agent(
-    tools=[call_monitor_a2a, call_incident_a2a, call_change],
+    tools=[call_monitor_a2a, call_incident_a2a],
     system_prompt_filename="system_prompt.md",
 )
 ```
+
+> Change Agent 는 후속 phase 로 연기 — Phase 6a 는 **A2A activation** 핵심 메시지에 집중. 24h 배포 회귀 검증 + incidents append 는 별 phase 에서 다룸.
 
 LLM 이 system_prompt 의 routing 정책 따라 어떤 tool 을 부를지 결정. tool 안에서 A2A hop 발생.
 
@@ -46,14 +45,14 @@ LLM 이 system_prompt 의 routing 정책 따라 어떤 tool 을 부를지 결정
 | 방향 | 검증 | OAuth provider | scope/audience |
 |---|---|---|---|
 | inbound (Operator → Supervisor) | **SigV4 IAM** (no customJWTAuthorizer) | (해당 없음) | 사용자 IAM Role 의 `bedrock-agentcore:InvokeAgentRuntime` |
-| outbound (Supervisor → 3 sub-agent) | 각 sub-agent 의 customJWTAuthorizer | `requires_access_token(provider_name=OAUTH_PROVIDER_NAME, auth_flow="M2M")` | **Client C** M2M 토큰의 `aud` ↔ sub-agent 의 `allowedClients=[Client C]` (Phase 2 재사용) |
+| outbound (Supervisor → 2 sub-agent) | 각 sub-agent 의 customJWTAuthorizer | `requires_access_token(provider_name=OAUTH_PROVIDER_NAME, auth_flow="M2M")` | **Client C** M2M 토큰의 `aud` ↔ sub-agent 의 `allowedClients=[Client C]` (Phase 2 재사용) |
 
 **핵심 통찰**: AgentCore `customJWTAuthorizer.allowedClients` 는 `aud` (= client_id) 만 검증, scope 미검증. Phase 2 의 Client C 토큰 (Gateway scope) 이 sub-agent A2A inbound 에도 통과 — 새 Cognito Client 추가 0.
 
 ## 사전 조건
 
 1. **Phase 0/2/3/4 deploy 완료** — Phase 2 산출물 `COGNITO_CLIENT_C_ID/SECRET` 가 `.env` 에 존재
-2. **Phase 6a Step B1 (change) + B2 (monitor_a2a + incident_a2a) Runtime deploy 완료** — 각 `runtime/.env` 에 ARN 작성됨
+2. **monitor_a2a + incident_a2a Runtime deploy 완료** — 각 `runtime/.env` 에 ARN 작성됨
 3. **repo `.env`** 에 (Phase 2 산출물):
    - `COGNITO_USER_POOL_ID`, `COGNITO_DOMAIN`
    - `COGNITO_CLIENT_C_ID`, `COGNITO_CLIENT_C_SECRET`
@@ -98,7 +97,7 @@ uv run agents/supervisor/runtime/invoke_runtime.py --query "..."
 {
   "summary": "<한국어 1-3 문장>",
   "monitor": "<plain text 또는 null>",
-  "incidents": [{"alarm": "...", "diagnosis": "...", "severity": "...", "regression_likelihood": "...", "incident_logged": true}],
+  "incidents": [{"alarm": "...", "diagnosis": "...", "severity": "...", "recommended_actions": [...]}],
   "next_steps": ["<영어 동사구>"]
 }
 ```

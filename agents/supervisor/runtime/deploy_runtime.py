@@ -10,8 +10,8 @@ Phase 4 incident `deploy_runtime.py` 와 다른 점 (Option X):
   - **OAuth provider = Phase 2 Client C 재사용** (Phase 4 incident 와 동일 Client +
     동일 provider 명명). sub-agent A2A 호출용 Bearer 도 Client C 토큰 — AgentCore
     customJWTAuthorizer 가 aud (= Client C id) 만 검증해서 통과
-  - **sub-agent ARN env vars** — MONITOR_A2A_RUNTIME_ARN / INCIDENT_A2A_RUNTIME_ARN /
-    CHANGE_RUNTIME_ARN (3 sub-agent 의 .env 에서 cross-load)
+  - **sub-agent ARN env vars** — MONITOR_A2A_RUNTIME_ARN / INCIDENT_A2A_RUNTIME_ARN
+    (2 sub-agent 의 .env 에서 cross-load — Change 는 후속 phase 로 연기)
   - Build context: supervisor/shared 만 (self-contained, helper 의존 없음)
 
 사용법:
@@ -19,8 +19,8 @@ Phase 4 incident `deploy_runtime.py` 와 다른 점 (Option X):
 
 사전 조건:
     - Phase 0/2/3/4 deploy 완료 (Phase 2 Client C 존재 — repo .env)
-    - Phase 6a B1 (change) + B2 (monitor_a2a + incident_a2a) Runtime 모두 deploy 완료
-      → 각 .env 에 *_RUNTIME_ARN 작성됨
+    - monitor_a2a + incident_a2a Runtime 모두 deploy 완료
+      → 각 .env 에 MONITOR_A2A_RUNTIME_ARN / INCIDENT_A2A_RUNTIME_ARN 작성됨
     - repo `.env` 에 COGNITO_CLIENT_C_ID, COGNITO_CLIENT_C_SECRET (Phase 2 산출물)
 
 수행 단계:
@@ -74,13 +74,12 @@ def copy_shared_into_build_context() -> None:
 
 
 def load_subagent_arns() -> dict:
-    """[2/6] sub-agent ARN cross-load — monitor_a2a + incident_a2a + change 의 runtime/.env."""
+    """[2/6] sub-agent ARN cross-load — monitor_a2a + incident_a2a 의 runtime/.env."""
     print(f"{YELLOW}[2/6] sub-agent Runtime ARN cross-load 중...{NC}")
     arns = {}
     sources = [
         ("MONITOR_A2A_RUNTIME_ARN", PROJECT_ROOT / "agents" / "monitor_a2a" / "runtime" / ".env"),
         ("INCIDENT_A2A_RUNTIME_ARN", PROJECT_ROOT / "agents" / "incident_a2a" / "runtime" / ".env"),
-        ("CHANGE_RUNTIME_ARN", PROJECT_ROOT / "agents" / "change" / "runtime" / ".env"),
     ]
     for key, env_path in sources:
         if not env_path.exists():
@@ -136,7 +135,6 @@ def launch_runtime(runtime, subagent_arns: dict):
         ),
         "MONITOR_A2A_RUNTIME_ARN": subagent_arns["MONITOR_A2A_RUNTIME_ARN"],
         "INCIDENT_A2A_RUNTIME_ARN": subagent_arns["INCIDENT_A2A_RUNTIME_ARN"],
-        "CHANGE_RUNTIME_ARN": subagent_arns["CHANGE_RUNTIME_ARN"],
         "OTEL_RESOURCE_ATTRIBUTES": f"service.name={AGENT_NAME}",
         "AGENT_OBSERVABILITY_ENABLED": "true",
         "DEMO_USER": DEMO_USER,

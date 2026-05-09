@@ -1,8 +1,0 @@
-# Phase 6a Change build context exclusion (docker build context = agents/change/runtime/)
-__pycache__/
-*.pyc
-.pytest_cache/
-.env
-.bedrock_agentcore.yaml
-Dockerfile
-.dockerignore
