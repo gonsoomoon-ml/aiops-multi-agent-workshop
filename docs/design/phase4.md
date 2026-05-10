@@ -144,7 +144,7 @@ D6 (Memory 보류)            — Phase 5 로 이월
 | 1 | Bedrock AgentCore Runtime | `aiops_demo_${DEMO_USER}_incident` | 1 | `agents/incident/runtime/deploy_runtime.py` |
 | 2 | OAuth2CredentialProvider | `aiops_demo_${DEMO_USER}_incident_gateway_provider` | 1 | 위 deploy 스크립트 (boto3) |
 | 3 | IAM Role (Incident Runtime) | `AmazonBedrockAgentCoreSDKRuntime-...-aiops_demo_${DEMO_USER}_incident-...` | 1 | toolkit 자동 생성 |
-| 4 | IAM inline policy | `Phase4IncidentRuntimeExtras` | 1 | deploy 스크립트 |
+| 4 | IAM inline policy | `IncidentRuntimeExtras` | 1 | deploy 스크립트 |
 | 5 | Lambda function | `aiops-demo-${DEMO_USER}-github-storage` | 1 | `infra/github-lambda/github_lambda.yaml` (CFN) |
 | 6 | Lambda IAM Role | `aiops-demo-${DEMO_USER}-github-storage-role` | 1 | 동일 CFN |
 | 7 | Gateway Target | `github-storage` | 1 | boto3 (Phase 2 패턴 재사용) |
@@ -155,7 +155,7 @@ D6 (Memory 보류)            — Phase 5 로 이월
 
 | 자원 | 상태 |
 |---|---|
-| Cognito UserPool + Client C + Resource Server | 그대로 |
+| Cognito UserPool + Client + Resource Server | 그대로 |
 | Gateway (`aiops-demo-${DEMO_USER}-gateway-...`) | 그대로 |
 | Gateway Target × 2 (history-mock, cloudwatch-wrapper) | 그대로 |
 | Lambda × 2 (history-mock, cloudwatch-wrapper) | 그대로 |
@@ -460,9 +460,9 @@ Resources:
   GatewayInvokeGithubLambdaPolicy:
     Type: AWS::IAM::Policy
     Properties:
-      PolicyName: !Sub "aiops-demo-${DemoUser}-phase4-gateway-invoke-github"
+      PolicyName: !Sub "aiops-demo-${DemoUser}-gateway-invoke-github"
       Roles:
-        - !Sub "aiops-demo-${DemoUser}-phase2-gateway-role"   # Phase 2 의 GatewayIamRole
+        - !Sub "aiops-demo-${DemoUser}-gateway-role"   # Phase 2 의 GatewayIamRole
       PolicyDocument:
         Version: "2012-10-17"
         Statement:
@@ -818,7 +818,7 @@ aws ssm put-parameter --name /aiops-demo/github-token --type SecureString \
 
 # 2. GitHub Lambda + Target 배포
 aws cloudformation deploy --template infra/github-lambda/github_lambda.yaml \
-  --stack-name aiops-demo-${DEMO_USER}-phase4-github \
+  --stack-name aiops-demo-${DEMO_USER}-github-lambda \
   --parameter-overrides DemoUser=${DEMO_USER} \
   --capabilities CAPABILITY_NAMED_IAM
 uv run infra/github-lambda/setup_github_target.py

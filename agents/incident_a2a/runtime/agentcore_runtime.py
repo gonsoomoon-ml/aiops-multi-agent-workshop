@@ -51,8 +51,9 @@ DEMO_USER = os.environ.get("DEMO_USER", "ubuntu")
 AGENT_NAME = f"aiops_demo_{DEMO_USER}_incident_a2a"
 AGENT_DESC = "Incident Agent — alarm 1건 → runbook 조회 → 진단 + 권장 조치 JSON 반환"
 
-# Phase 4 와 동일 — github-storage Target 만 (runbook lookup)
-TOOL_TARGET_PREFIX = "github-storage___"
+# Phase 4 와 동일 — storage Target 만 (runbook lookup).
+# Backend 선택은 env STORAGE_BACKEND 로 (s3 default / github 선택). Lambda 응답 shape 동형.
+TOOL_TARGET_PREFIX = f"{os.environ.get('STORAGE_BACKEND', 's3')}-storage___"
 SYSTEM_PROMPT_FILENAME = "system_prompt.md"
 
 
@@ -63,7 +64,7 @@ SYSTEM_PROMPT_FILENAME = "system_prompt.md"
     into="access_token",
 )
 async def _fetch_gateway_token(*, access_token: str = "") -> str:
-    """Gateway 호출용 token (Client C M2M)."""
+    """Gateway 호출용 token (Client M2M)."""
     return access_token
 
 

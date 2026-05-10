@@ -11,11 +11,11 @@ NC='\033[0m'
 log()  { echo -e "${GREEN}[deploy]${NC} $1"; }
 fail() { echo -e "${RED}[deploy]${NC} $1"; exit 1; }
 
-# ── 사전 검증: AWS 자격증명 (C1) ─────────────────
+# ── AWS 자격증명 사전 검증 ───────────────────────
 aws sts get-caller-identity --query Account --output text >/dev/null 2>&1 \
     || fail "AWS 자격증명 미설정. aws configure 또는 export AWS_PROFILE 후 재실행"
 
-# ── .env 자동 생성 (C3) ──────────────────────────
+# ── .env 자동 생성 (없으면 .env.example 복사) ────
 if [[ ! -f "$PROJECT_ROOT/.env" ]]; then
     cp "$PROJECT_ROOT/.env.example" "$PROJECT_ROOT/.env"
     log ".env 미존재 — .env.example에서 자동 생성"
@@ -28,13 +28,14 @@ set +a
 
 REGION="${AWS_REGION:-us-west-2}"
 
-# ── DEMO_USER (C6: 동일 계정 다중 시연자 충돌 방지) ──
+# ── DEMO_USER — 동일 AWS 계정에 여러 시연자 deploy 시 충돌 방지용 prefix ──
+# 우선순위: .env 의 DEMO_USER > OS $USER > 'ubuntu'. 워크샵 multi-user 시 .env 명시 권장.
 DEMO_USER="${DEMO_USER:-${USER:-ubuntu}}"
 [[ "$DEMO_USER" =~ ^[a-zA-Z0-9-]{1,16}$ ]] \
     || fail "DEMO_USER='$DEMO_USER' 잘못된 형식. 영문/숫자/하이픈만 ≤16자 (.env 또는 export DEMO_USER=...)"
 
-STACK_EC2="aiops-demo-${DEMO_USER}-phase0-ec2"
-STACK_ALARMS="aiops-demo-${DEMO_USER}-phase0-alarms"
+STACK_EC2="aiops-demo-${DEMO_USER}-ec2-simulator"
+STACK_ALARMS="aiops-demo-${DEMO_USER}-alarms"
 KEYPAIR_NAME="aiops-demo-${DEMO_USER}-keypair"
 
 # ── 운영자 IP 자동 감지 (C2: 실패 시 fail-fast) ───
@@ -53,7 +54,7 @@ aws cloudformation deploy \
     --region "$REGION" \
     --stack-name "$STACK_EC2" \
     --template-file ec2-simulator.yaml \
-    --parameter-overrides AllowedSshIp="$ALLOWED_SSH_IP" KeyPairName="$KEYPAIR_NAME" \
+    --parameter-overrides DemoUser="$DEMO_USER" AllowedSshIp="$ALLOWED_SSH_IP" KeyPairName="$KEYPAIR_NAME" \
     --capabilities CAPABILITY_NAMED_IAM \
     --tags Project=aiops-demo "User=$DEMO_USER"
 

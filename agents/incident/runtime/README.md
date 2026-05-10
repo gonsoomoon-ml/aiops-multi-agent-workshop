@@ -1,6 +1,6 @@
 # Phase 4 — Incident Agent on AgentCore Runtime
 
-Phase 3 의 Monitor Runtime 패턴 (`agents/monitor/runtime/`) 을 Incident Agent 에 carry-over. `@app.entrypoint` + OAuth2CredentialProvider 자동 inject + MCPClient → Gateway 호출. 차이점은 agent_name + tool target prefix (`github-storage___`) + payload schema (`{"alarm_name": "..."}`) 만.
+Phase 3 의 Monitor Runtime 패턴 (`agents/monitor/runtime/`) 을 Incident Agent 에 carry-over. `@app.entrypoint` + OAuth2CredentialProvider 자동 inject + MCPClient → Gateway 호출. 차이점은 agent_name + tool target prefix (`${STORAGE_BACKEND}-storage___` — env 기반, s3 default) + payload schema (`{"alarm_name": "..."}`) 만.
 
 설계 원본: [`docs/design/phase4.md`](../../../docs/design/phase4.md) (D1~D6 + P4-A1~A5).
 
@@ -8,14 +8,14 @@ Phase 3 의 Monitor Runtime 패턴 (`agents/monitor/runtime/`) 을 Incident Agen
 
 - **Phase 2 완료** — `infra/cognito-gateway/deploy.sh` 통과 + repo root `.env` 채워진 상태.
 - **Phase 3 완료** — Monitor Runtime READY + `aiops_demo_${DEMO_USER}_monitor` alive.
-- **Phase 4 Step C 완료 (선결 의존)** — `infra/github-lambda/github_lambda.yaml` deploy + Gateway Target `github-storage` 등록 + SSM `/aiops-demo/github-token` 에 GitHub PAT 저장.
+- **Phase 4 Step C 완료 (선결 의존)** — STORAGE_BACKEND 에 따라 `infra/s3-lambda/deploy.sh` (default) 또는 `infra/github-lambda/deploy.sh` (PAT 필요) 통과. Gateway Target 등록 + (s3 의 경우) bucket seed 완료.
 - AWS 자격 증명 + Docker daemon + `uv sync` 완료.
 
 ## 파일 구성
 
 | 파일 | 역할 |
 |---|---|
-| `agentcore_runtime.py` | Incident entrypoint — `@app.entrypoint` SSE yield. payload `{alarm_name}`. tool filter `github-storage___` |
+| `agentcore_runtime.py` | Incident entrypoint — `@app.entrypoint` SSE yield. payload `{alarm_name}`. tool filter `${STORAGE_BACKEND}-storage___` (s3 default / github 선택) |
 | `Dockerfile` | toolkit 자동 생성 (configure 첫 실행 시) |
 | `requirements.txt` | strands-agents, bedrock-agentcore — Phase 3 monitor 와 동일 |
 | `.dockerignore` | build context 제외 — Phase 3 패턴 |

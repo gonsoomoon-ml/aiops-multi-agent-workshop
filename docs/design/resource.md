@@ -5,7 +5,7 @@
 ### 1. A2A-multi-agent-incident-response — Cognito 인프라 + MCPClient Runtime 패턴
 - 경로: `/home/ubuntu/amazon-bedrock-agentcore-samples/02-use-cases/A2A-multi-agent-incident-response/`
 - **Phase 2 차용**:
-  - `cloudformation/cognito.yaml:28-156` — UserPool + Domain + ResourceServer + UserPoolClient M2M scope 패턴 (multi-user prefix 추가). Phase 2 = Client C 만 (Phase 4 에서 Client A/B 추가)
+  - `cloudformation/cognito.yaml:28-156` — UserPool + Domain + ResourceServer + UserPoolClient M2M scope 패턴 (multi-user prefix 추가). Phase 2 = Client 만 (Phase 4 에서 Client A/B 추가)
   - **차용 안 함**: Gateway/GatewayTarget CFN 패턴 — 우리는 Hybrid (boto3 setup_gateway.py) 채택
 - **Phase 3 차용 (예정)**:
   - `monitoring_strands_agent/utils.py:27-48` `create_gateway_client(workload_token)` — Runtime 의 MCPClient 호출 패턴 (`agentcore_client.get_resource_oauth2_token(...)`). Phase 2 transitional helper 폐기 후 이 패턴으로 evolve

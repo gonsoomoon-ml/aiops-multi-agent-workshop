@@ -1,0 +1,109 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: |
+  AIOps Multi-Agent Demo — S3 storage Lambda + cross-stack Gateway invoke.
+  GitHub backend (`infra/github-lambda/`) 의 형제 (alternative) — corporate /
+  GovCloud 같이 GitHub 접근이 막힌 환경 또는 PAT 부재 시 사용.
+
+  cognito-gateway stack 미터치. cognito-gateway 의 GatewayIamRole 에 invoke 권한을
+  inline policy 로 추가 (cross-stack via Role name string). 본 stack delete 시
+  Policy 만 제거, cognito-gateway Role 보존.
+
+  reference:
+    - infra/github-lambda/github_lambda.yaml (형제 backend, 동일 pattern)
+    - phase4_design_pivots.md (cross-stack Lambda Permission 패턴)
+
+Parameters:
+  DemoUser:
+    Type: String
+    Description: 워크샵 청중 prefix (영문/숫자/하이픈, ≤16자)
+    AllowedPattern: "^[a-zA-Z0-9-]{1,16}$"
+
+Resources:
+  # === S3 bucket — runbook + 향후 incident/diagnosis 데이터 보관 =====
+  StorageBucket:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Delete            # 워크샵 — teardown 시 자동 삭제 (production 은 Retain)
+    Properties:
+      BucketName: !Sub "aiops-demo-${DemoUser}-storage-${AWS::AccountId}-${AWS::Region}"
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      VersioningConfiguration:
+        Status: Enabled
+      Tags:
+        - Key: Project
+          Value: aiops-demo
+        - Key: User
+          Value: !Ref DemoUser
+
+  # === Lambda IAM Role ================================================
+  S3StorageLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "aiops-demo-${DemoUser}-s3-storage-role"
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: S3ReadStorageBucket
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:ListBucket
+                Resource:
+                  - !GetAtt StorageBucket.Arn
+                  - !Sub "${StorageBucket.Arn}/*"
+
+  # === Lambda Function ================================================
+  S3StorageLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub "aiops-demo-${DemoUser}-s3-storage"
+      Runtime: python3.13
+      Handler: handler.lambda_handler
+      Code: ./lambda_src/s3_storage
+      Role: !GetAtt S3StorageLambdaRole.Arn
+      Timeout: 15
+      MemorySize: 256
+      Environment:
+        Variables:
+          S3_BUCKET: !Ref StorageBucket
+          DEMO_USER: !Ref DemoUser    # alarm_name → alarm_class 변환 (handler 의 _alarm_class)
+
+  # === Cross-stack Lambda invoke Permission ===========================
+  # cognito-gateway 의 GatewayIamRole 에 S3StorageLambda invoke 권한 inline 추가.
+  # cognito-gateway stack 미터치. 본 stack 삭제 시 Policy 만 제거, Role 보존.
+  GatewayInvokeS3LambdaPolicy:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyName: !Sub "aiops-demo-${DemoUser}-gateway-invoke-s3"
+      Roles:
+        - !Sub "aiops-demo-${DemoUser}-gateway-role"   # cognito-gateway 의 GatewayIamRole
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Action: lambda:InvokeFunction
+            Resource: !GetAtt S3StorageLambda.Arn
+
+Outputs:
+  S3StorageLambdaArn:
+    Description: S3 storage Lambda ARN — setup_s3_target.py 가 read
+    Value: !GetAtt S3StorageLambda.Arn
+  S3StorageLambdaName:
+    Description: Lambda 함수 이름
+    Value: !Ref S3StorageLambda
+  StorageBucketName:
+    Description: S3 bucket — data/runbooks/, data/incidents/ 등
+    Value: !Ref StorageBucket

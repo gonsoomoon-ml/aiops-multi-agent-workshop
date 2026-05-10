@@ -3,7 +3,7 @@
 #
 # Phase 2 + Phase 3 가 alive 라고 가정. Phase 2 stack / Gateway / 기존 2 Target 미터치.
 # 본 스크립트가 추가하는 것:
-#   - Phase 4 CFN stack (`aiops-demo-${DEMO_USER}-phase4-github`) — Lambda + Role + cross-stack policy
+#   - Phase 4 CFN stack (`aiops-demo-${DEMO_USER}-github-lambda`) — Lambda + Role + cross-stack policy
 #   - Gateway Target `github-storage` (Phase 2 Gateway 에 1건 추가)
 #
 # 사전 prerequisite (별도):
@@ -43,7 +43,7 @@ DEMO_USER="${DEMO_USER:-${USER:-ubuntu}}"
     || fail "DEMO_USER='$DEMO_USER' 잘못된 형식 (영문/숫자/하이픈만 ≤16자)"
 
 ACCOUNT_ID="$(aws sts get-caller-identity --query Account --output text)"
-STACK="aiops-demo-${DEMO_USER}-phase4-github"
+STACK="aiops-demo-${DEMO_USER}-github-lambda"
 DEPLOY_BUCKET="aiops-demo-${DEMO_USER}-deploy-${ACCOUNT_ID}-${REGION}"   # Phase 2 와 공유
 
 log "region=$REGION demo_user=$DEMO_USER account=$ACCOUNT_ID"
@@ -51,7 +51,7 @@ log "stack=$STACK / deploy bucket=$DEPLOY_BUCKET (Phase 2 와 공유)"
 
 # ── 1. Phase 2/3 prerequisite 확인 ───────────────
 log "Phase 2/3 prerequisite 검증"
-PHASE2_STACK="aiops-demo-${DEMO_USER}-phase2-cognito"
+PHASE2_STACK="aiops-demo-${DEMO_USER}-cognito-gateway"
 aws cloudformation describe-stacks --stack-name "$PHASE2_STACK" --region "$REGION" >/dev/null 2>&1 \
     || fail "Phase 2 stack '$PHASE2_STACK' 미존재 — Phase 2 deploy 먼저 실행"
 [[ -n "${GATEWAY_ID:-}" ]] \
@@ -71,7 +71,7 @@ log "cfn package — github_storage Lambda zip + S3 업로드"
 aws cloudformation package \
     --template-file github_lambda.yaml \
     --s3-bucket "$DEPLOY_BUCKET" \
-    --s3-prefix "phase4-github" \
+    --s3-prefix "github-lambda" \
     --region "$REGION" \
     --output-template-file github_lambda.packaged.yaml >/dev/null
 

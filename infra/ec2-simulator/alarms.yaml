@@ -25,15 +25,19 @@ Resources:
           Value: !Ref InstanceId
       Statistic: Maximum
       Period: 60
-      EvaluationPeriods: 2
+      EvaluationPeriods: 1
       Threshold: 0
       ComparisonOperator: GreaterThanThreshold
-      # breaching: EC2 stop → metric 송신 중단 → "인스턴스 죽음" = ALARM (AWS 모범 사례).
+      # breaching: EC2 stop → metric 송신 중단 → "인스턴스 죽음" = ALARM.
       # notBreaching 면 stop chaos 가 알람 발화 못 함.
+      # NOTE: production 모범 사례는 2+ EvaluationPeriods (flap 방지). 본 데모는 워크샵
+      # iteration 속도를 위해 1 로 단축 — chaos stop 후 ~1분 내 ALARM.
       TreatMissingData: breaching
       Tags:
         - Key: Project
           Value: aiops-demo
+        - Key: User
+          Value: !Ref DemoUser
         - Key: Classification
           Value: real
 
@@ -57,12 +61,12 @@ Resources:
       Tags:
         - Key: Project
           Value: aiops-demo
+        - Key: User
+          Value: !Ref DemoUser
         - Key: Classification
           Value: noise
 
 Outputs:
-  AlarmCount:
-    Value: 2
   RealAlarms:
     Value: !Sub payment-${DemoUser}-status-check
   NoiseAlarms:

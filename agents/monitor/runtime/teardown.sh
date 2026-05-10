@@ -4,22 +4,23 @@
 # reference: phase3.md §9.
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(cd "${SCRIPT_DIR}/../../.." && pwd)"
+
+# .env 로드: repo root (DEMO_USER + COGNITO_*) → runtime-local (RUNTIME_ID 등 — deploy 가 작성)
+[ -f "$PROJECT_ROOT/.env" ] && { set -a; source "$PROJECT_ROOT/.env"; set +a; }
+[ -f "${SCRIPT_DIR}/.env" ] && { set -a; source "${SCRIPT_DIR}/.env"; set +a; }
+
 REGION="${AWS_REGION:-us-west-2}"
-DEMO_USER="${DEMO_USER:?DEMO_USER 미설정}"
+DEMO_USER="${DEMO_USER:?DEMO_USER 미설정 (repo root .env 필요)}"
 AGENT_NAME="aiops_demo_${DEMO_USER}_monitor"
 OAUTH_PROVIDER_NAME="${AGENT_NAME}_gateway_provider"
 ECR_REPO="bedrock-agentcore-${AGENT_NAME}"
 LOG_GROUP="/aws/bedrock-agentcore/runtimes/${AGENT_NAME}"
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 GREEN='\033[0;32m'; YELLOW='\033[1;33m'; RED='\033[0;31m'; NC='\033[0m'
 
 echo -e "${YELLOW}=== Phase 3 teardown — ${AGENT_NAME} ===${NC}"
-
-# .env 에서 RUNTIME_ID 등 로딩 (있으면)
-if [ -f "${SCRIPT_DIR}/.env" ]; then
-    set -a; source "${SCRIPT_DIR}/.env"; set +a
-fi
 
 # ── [1/6] Runtime 삭제 ──────────────────────────────────────────
 echo -e "${YELLOW}[1/6] Runtime 삭제${NC}"
@@ -69,7 +70,7 @@ fi
 echo -e "${YELLOW}[5/6] IAM Role 삭제${NC}"
 ROLE_ARN="${ROLE_ARN:-$(aws bedrock-agentcore-control get-agent-runtime --region "$REGION" \
     --agent-runtime-id "${RUNTIME_ID:-}" --query 'roleArn' --output text 2>/dev/null || echo '')}"
-ROLE_NAME="${ROLE_ARN##*/}"
+ROLE_NAME="${ROLE_ARN:+${ROLE_ARN##*/}}"
 if [ -n "$ROLE_NAME" ] && [ "$ROLE_NAME" != "None" ] && aws iam get-role --role-name "$ROLE_NAME" >/dev/null 2>&1; then
     for POLICY in $(aws iam list-role-policies --role-name "$ROLE_NAME" --query 'PolicyNames' --output text); do
         aws iam delete-role-policy --role-name "$ROLE_NAME" --policy-name "$POLICY"
@@ -100,19 +101,19 @@ if [ -f "${SCRIPT_DIR}/.env" ]; then
     echo -e "  ${GREEN}✓ ${SCRIPT_DIR}/.env 의 Phase 3 entry cleanup${NC}"
 fi
 
-# ── Phase 2 자원 보존 검증 (negative check) ─────────────────────
-echo -e "${YELLOW}[verify] Phase 2 자원 보존 검증${NC}"
+# ── dependency 보존 확인 (negative check) ─────────────────────
+echo -e "${YELLOW}[verify] dependency 보존 확인 (Gateway / Cognito stack)${NC}"
 GATEWAY_COUNT=$(aws bedrock-agentcore-control list-gateways --region "$REGION" \
     --query "length(items[?contains(name, 'aiops-demo-${DEMO_USER}-gateway')])" --output text 2>/dev/null || echo "0")
 if [ "$GATEWAY_COUNT" != "0" ] && [ "$GATEWAY_COUNT" != "None" ]; then
-    echo -e "  ${GREEN}✓ Phase 2 Gateway 보존 (${GATEWAY_COUNT}건)${NC}"
+    echo -e "  ${GREEN}✓ Gateway 보존 (${GATEWAY_COUNT}건)${NC}"
 else
-    echo -e "  ${RED}❌ Phase 2 Gateway 미발견 — Phase 2 redeploy 필요${NC}"
+    echo -e "  - Gateway 미존재 (이미 정리되었거나 미배포)"
 fi
-if aws cloudformation describe-stacks --stack-name "aiops-demo-${DEMO_USER}-phase2-cognito" --region "$REGION" >/dev/null 2>&1; then
-    echo -e "  ${GREEN}✓ Phase 2 Cognito stack 보존${NC}"
+if aws cloudformation describe-stacks --stack-name "aiops-demo-${DEMO_USER}-cognito-gateway" --region "$REGION" >/dev/null 2>&1; then
+    echo -e "  ${GREEN}✓ Cognito stack 보존${NC}"
 else
-    echo -e "  ${RED}❌ Phase 2 Cognito stack 삭제됨${NC}"
+    echo -e "  - Cognito stack 미존재 (이미 정리되었거나 미배포)"
 fi
 
 echo -e "${GREEN}=== ✅ Phase 3 teardown 완료 ===${NC}"

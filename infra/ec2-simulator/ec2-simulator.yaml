@@ -2,15 +2,19 @@ AWSTemplateFormatVersion: '2010-09-09'
 Description: AIOps Demo Phase 0 — EC2 simulator (minimum, Flask /health only)
 
 Parameters:
+  DemoUser:
+    Description: Per-user prefix for resource names (multi-tenant safety on shared AWS account)
+    Type: String
+    AllowedPattern: '^[a-zA-Z0-9-]{1,16}$'
+
   AllowedSshIp:
     Description: Operator IP for SSH/8080 access (CIDR), e.g. 1.2.3.4/32
     Type: String
     AllowedPattern: '^(\d{1,3}\.){3}\d{1,3}/\d{1,2}$'
 
   KeyPairName:
-    Description: EC2 KeyPair name (will be created if not exists)
+    Description: EC2 KeyPair name. Convention = aiops-demo-${DemoUser}-keypair (deploy.sh 에서 자동 주입).
     Type: String
-    Default: aiops-demo-keypair
 
   InstanceType:
     Type: String
@@ -28,11 +32,13 @@ Resources:
       Tags:
         - Key: Project
           Value: aiops-demo
+        - Key: User
+          Value: !Ref DemoUser
 
   SimulatorSG:
     Type: AWS::EC2::SecurityGroup
     Properties:
-      GroupDescription: AIOps demo EC2 simulator
+      GroupDescription: !Sub "AIOps demo EC2 simulator (${DemoUser})"
       SecurityGroupIngress:
         - IpProtocol: tcp
           FromPort: 22
@@ -45,6 +51,8 @@ Resources:
       Tags:
         - Key: Project
           Value: aiops-demo
+        - Key: User
+          Value: !Ref DemoUser
 
   SimulatorInstance:
     Type: AWS::EC2::Instance
@@ -92,8 +100,10 @@ Resources:
       Tags:
         - Key: Project
           Value: aiops-demo
+        - Key: User
+          Value: !Ref DemoUser
         - Key: Name
-          Value: aiops-demo-simulator
+          Value: !Sub aiops-demo-${DemoUser}-simulator
 
   SimulatorEIP:
     Type: AWS::EC2::EIP
@@ -101,6 +111,8 @@ Resources:
       Tags:
         - Key: Project
           Value: aiops-demo
+        - Key: User
+          Value: !Ref DemoUser
 
   SimulatorEIPAssociation:
     Type: AWS::EC2::EIPAssociation
@@ -109,8 +121,8 @@ Resources:
       InstanceId: !Ref SimulatorInstance
 
 Outputs:
-  # Note: Export 제거됨 (C6, 2026-05-04) — 동일 계정 다중 시연자 충돌 방지.
-  # Phase 2+ 에서 cross-stack reference 필요 시 stack-name 에 DEMO_USER 포함된 Export.Name 으로 재추가.
+  # Note: Export 미사용 — 동일 AWS 계정에 여러 시연자가 deploy 시 export name 충돌 방지.
+  # cross-stack reference 필요 시 ${DemoUser} 포함된 고유 Export.Name 으로 재추가.
   InstanceId:
     Value: !Ref SimulatorInstance
   PublicIp:

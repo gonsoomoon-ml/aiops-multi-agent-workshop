@@ -4,17 +4,17 @@ deploy_runtime.py — Phase 6a Incident A2A AgentCore Runtime 배포
 
 Phase 4 ``agents/incident/runtime/deploy_runtime.py`` 와 동일 5-step 흐름. 차이점:
   - **agent_name = ``aiops_demo_${DEMO_USER}_incident_a2a``** (Phase 4 incident 와 별 Runtime)
-  - **protocol="A2A"** + customJWTAuthorizer (allowedClients=[Client C] — Option X, Phase 2 재사용)
+  - **protocol="A2A"** + customJWTAuthorizer (allowedClients=[Client] — Option X, Phase 2 재사용)
   - Build context Option A: **Phase 4 monitor/shared (helper) + Phase 4 incident/shared
     (truth)** 모두 copy. incident_a2a 자체에 shared/ 없음, runtime/ 만 보유 (Option G —
     2026-05-09 review). 청중에게 "Phase 4 의 incident 위에 A2A wrap 만 추가" 메시지 명확.
-  - IAM inline policy: ``Phase6aIncidentA2aRuntimeExtras``
+  - IAM inline policy: ``IncidentA2aRuntimeExtras``
 
 사용법:
     uv run agents/incident_a2a/runtime/deploy_runtime.py
 
 사전 조건:
-    - Phase 0/2/3/4 deploy 완료 (Phase 2 산출물 COGNITO_CLIENT_C_ID 가 .env 에 존재)
+    - Phase 0/2/3/4 deploy 완료 (Phase 2 산출물 COGNITO_CLIENT_ID 가 .env 에 존재)
     - Phase 4 monitor/shared + incident/shared 존재 (build context source)
     - (Phase 6a Option X — 새 Cognito 자원 추가 0)
 """
@@ -92,8 +92,8 @@ def configure_runtime():
         sys.exit(1)
 
     user_pool_id = os.environ["COGNITO_USER_POOL_ID"]
-    # Option X — Phase 2 Client C 재사용 (새 Cognito 자원 추가 0)
-    client_c_id = os.environ["COGNITO_CLIENT_C_ID"]
+    # Option X — Phase 2 Client 재사용 (새 Cognito 자원 추가 0)
+    client_id = os.environ["COGNITO_CLIENT_ID"]
     discovery_url = (
         f"https://cognito-idp.{REGION}.amazonaws.com/{user_pool_id}/.well-known/openid-configuration"
     )
@@ -110,7 +110,7 @@ def configure_runtime():
         authorizer_configuration={
             "customJWTAuthorizer": {
                 "discoveryUrl": discovery_url,
-                "allowedClients": [client_c_id],
+                "allowedClients": [client_id],
             }
         },
         request_header_configuration={
@@ -120,7 +120,7 @@ def configure_runtime():
         },
         non_interactive=True,
     )
-    print(f"{GREEN}✅ 설정 완료 (Protocol: A2A, AllowedClients: [{client_c_id}] — Phase 2 Client C){NC}\n")
+    print(f"{GREEN}✅ 설정 완료 (Protocol: A2A, AllowedClients: [{client_id}] — Phase 2 Client){NC}\n")
     return runtime
 
 
@@ -139,6 +139,7 @@ def launch_runtime(runtime):
         "OTEL_RESOURCE_ATTRIBUTES": f"service.name={AGENT_NAME}",
         "AGENT_OBSERVABILITY_ENABLED": "true",
         "DEMO_USER": DEMO_USER,
+        "STORAGE_BACKEND": os.environ.get("STORAGE_BACKEND", "s3"),  # s3 / github
     }
 
     start_time = datetime.now()
@@ -151,7 +152,7 @@ def launch_runtime(runtime):
 
 
 def attach_extras_and_oauth_provider(launch_result) -> None:
-    """[4/5] IAM inline policy + OAuth provider (Gateway 호출용 Client C M2M)."""
+    """[4/5] IAM inline policy + OAuth provider (Gateway 호출용 Client M2M)."""
     print(f"{YELLOW}[4/5] IAM 추가 권한 + OAuth2CredentialProvider 생성 중...{NC}")
 
     agentcore_control = boto3.client("bedrock-agentcore-control", region_name=REGION)
@@ -182,10 +183,10 @@ def attach_extras_and_oauth_provider(launch_result) -> None:
     }
     iam.put_role_policy(
         RoleName=role_name,
-        PolicyName="Phase6aIncidentA2aRuntimeExtras",
+        PolicyName="IncidentA2aRuntimeExtras",
         PolicyDocument=json.dumps(extras_policy),
     )
-    print(f"{GREEN}✅ IAM inline policy 부착: {role_name}/Phase6aIncidentA2aRuntimeExtras{NC}")
+    print(f"{GREEN}✅ IAM inline policy 부착: {role_name}/IncidentA2aRuntimeExtras{NC}")
 
     user_pool_id = os.environ["COGNITO_USER_POOL_ID"]
     domain = os.environ["COGNITO_DOMAIN"]
@@ -195,8 +196,8 @@ def attach_extras_and_oauth_provider(launch_result) -> None:
             credentialProviderVendor="CustomOauth2",
             oauth2ProviderConfigInput={
                 "customOauth2ProviderConfig": {
-                    "clientId": os.environ["COGNITO_CLIENT_C_ID"],
-                    "clientSecret": os.environ["COGNITO_CLIENT_C_SECRET"],
+                    "clientId": os.environ["COGNITO_CLIENT_ID"],
+                    "clientSecret": os.environ["COGNITO_CLIENT_SECRET"],
                     "oauthDiscovery": {
                         "authorizationServerMetadata": {
                             "issuer": f"https://cognito-idp.{REGION}.amazonaws.com/{user_pool_id}",

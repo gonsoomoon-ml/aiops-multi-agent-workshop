@@ -55,7 +55,7 @@ T+8m     Orchestrator — 종합 → 진단 리포트 자동 commit + 권고 액
 │   └─ Supervisor (AgentCore Runtime)  [Phase 5 필수]          │
 │        Strands Agent + @tool wrapping a2a.client (LLM 라우팅) │
 └──────────────────────────────────────────────────────────────┘
-       │  A2A JSON-RPC + Bearer (스타 토폴로지, Cognito Client C 재사용 — Option X)
+       │  A2A JSON-RPC + Bearer (스타 토폴로지, Cognito Client 재사용 — Option X)
        ├──────────────┬──────────────┐
        ▼              ▼              ▼
 ┌─────────────┐ ┌─────────────┐ ┌─────────────┐
@@ -65,7 +65,7 @@ T+8m     Orchestrator — 종합 → 진단 리포트 자동 commit + 권고 액
 │ Runtime     │ │ Runtime     │ │             │
 └─────────────┘ └─────────────┘ └─────────────┘
        │              │              │
-       │  MCP streamable-http + Bearer (AgentCore Identity 자동, Cognito Client C)
+       │  MCP streamable-http + Bearer (AgentCore Identity 자동, Cognito Client)
        ▼              ▼              ▼
 ┌──────────────────────────────────────────────────────────────┐
 │  AgentCore Gateway (MCP)                                     │
@@ -88,10 +88,10 @@ T+8m     Orchestrator — 종합 → 진단 리포트 자동 commit + 권고 액
 운영자 → CLI → Supervisor Runtime
             ↓ SigV4 IAM (Phase 5 Option X — Operator CLI = boto3 invoke_agent_runtime)
         Supervisor → Monitor / Incident (스타 토폴로지)  *Change 는 stretched*
-            ↓ A2A JSON-RPC + Bearer (Cognito Client C 재사용 — Option X, allowedClients=[C])
+            ↓ A2A JSON-RPC + Bearer (Cognito Client 재사용 — Option X, allowedClients=[C])
         Sub-agent Runtime
             ↓ MCP streamable-http + Bearer
-            ↑ AgentCore Identity 자동 발급 (Cognito Client C — 동일 client, 다중 audience)
+            ↑ AgentCore Identity 자동 발급 (Cognito Client — 동일 client, 다중 audience)
         AgentCore Gateway
             ↓ Smithy 매핑 → AWS SigV4 / Lambda invoke
         실 CloudWatch API  /  GitHub Lambda  /  history mock Lambda
@@ -112,7 +112,7 @@ T+8m     Orchestrator — 종합 → 진단 리포트 자동 commit + 권고 액
 | Lambda            | 2 (GitHub + history mock) | + 1 (deployments-storage, stretched) |
 | EC2 simulator     | 1 (t3.micro + Flask + 카오스 스크립트, EC mall 도착 시 대체) | — |
 | Storage           | GitHub repo 1 (또는 S3 bucket 1, fallback) | — |
-| Cognito           | UserPool 1 + UserPoolClient 1 (Client C — Phase 2, Gateway/A2A 다중 audience 재사용 — Option X) | — |
+| Cognito           | UserPool 1 + UserPoolClient 1 (Client — Phase 2, Gateway/A2A 다중 audience 재사용 — Option X) | — |
 | IAM Role          | per-Runtime auto-create (toolkit) | — |
 | NL Policy         | — | 1 (readonly enforcement, stretched) |
 
@@ -131,7 +131,7 @@ T+8m     Orchestrator — 종합 → 진단 리포트 자동 commit + 권고 액
 | 2     | Gateway + MCP로 도구 외부화 (CloudWatch native + GitHub) + 라이브 alarm 분류 검증  |
 | 3     | Monitor → AgentCore Runtime + A2A 서버 승격                                |
 | 4     | Incident Agent + GitHub storage Lambda + sequential CLI                  |
-| 5     | Supervisor + Monitor a2a + Incident a2a + A2A 활성화 (`serve_a2a` + LazyExecutor) + Operator 진입점 (`agents/supervisor/runtime/invoke_runtime.py`) — Cognito Client C 재사용 (Option X), Phase 4 shared/ 직접 재사용 (Option G) |
+| 5     | Supervisor + Monitor a2a + Incident a2a + A2A 활성화 (`serve_a2a` + LazyExecutor) + Operator 진입점 (`agents/supervisor/runtime/invoke_runtime.py`) — Cognito Client 재사용 (Option X), Phase 4 shared/ 직접 재사용 (Option G) |
 | 6     | EC mall 통합 — alarm 확장만으로 동일 시나리오 재현 (외부 의존: 동료 EC mall 완료)         |
 
 ### Stretched phase (시간 여유 / workshop 후속 자료)
@@ -154,7 +154,7 @@ T+8m     Orchestrator — 종합 → 진단 리포트 자동 commit + 권고 액
   - **에이전트별 모델·관측성 env 패턴**: `/home/ubuntu/sample-deep-insight/managed-agentcore/.env.example` — per-agent `MODEL_ID` 분리 + OTEL `service.name` 자동 통합
   - **변형 포인트**: Google ADK Supervisor → Strands sub_agents 전환, OpenAI/Tavily 제거, GitHub Lambda + history mock Lambda Target 추가, EC2 카오스 + 3가지 진단 유형 신규
 - **AWS 계정 액세스**: Bedrock Claude Sonnet 4.6 / Haiku 4.5 model access 활성화 + AgentCore Runtime 3개 (필수) + 1개 (stretched Change) · Gateway 1개 quota 확인
-- **리전**: us-west-2 (A2A 정식 지원)
+- **리전**: AgentCore Runtime 지원 region 중 임의 선택 (us-east-1 / us-east-2 / us-west-2 / eu / ap / ca / sa 등 15개 region — `docs/aws.amazon.com/bedrock-agentcore/latest/devguide/agentcore-regions.html` 참조). A2A 는 Runtime 의 sub-feature 라 동일 region 지원. 이 데모는 default `us-west-2` 사용 (변경 시 `bash bootstrap.sh` 또는 `.env` 의 `AWS_REGION` 갱신).
 - **모델 (env var로 에이전트별 분리)**:
   - `MONITOR_MODEL_ID=claude-sonnet-4-6` (기본)
   - `INCIDENT_MODEL_ID=claude-sonnet-4-6`

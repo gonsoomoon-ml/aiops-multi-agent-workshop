@@ -29,7 +29,7 @@ def create_agent(
 
     Args:
         tools: caller 가 주입하는 도구 list. Phase 4 Incident = MCPClient 의
-            ``github-storage___*`` 부분 집합.
+            ``${STORAGE_BACKEND}-storage___*`` 부분 집합 (s3 default / github 선택).
         system_prompt_filename: ``prompts/`` 안의 파일명. Phase 4 = ``"system_prompt.md"``
             (single mode — Incident 는 past/live 분기 없음).
     """

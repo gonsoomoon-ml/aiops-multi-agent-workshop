@@ -3,19 +3,23 @@
 # Phase 0/2/3/4 자원 + 다른 Phase 6a 자원 (incident_a2a, change, supervisor) 미터치.
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(cd "${SCRIPT_DIR}/../../.." && pwd)"
+
+# .env 로드: repo root (DEMO_USER + COGNITO_*) → runtime-local (RUNTIME_ID 등 — deploy 가 작성)
+[ -f "$PROJECT_ROOT/.env" ] && { set -a; source "$PROJECT_ROOT/.env"; set +a; }
+[ -f "${SCRIPT_DIR}/.env" ] && { set -a; source "${SCRIPT_DIR}/.env"; set +a; }
+
 REGION="${AWS_REGION:-us-west-2}"
-DEMO_USER="${DEMO_USER:?DEMO_USER 미설정}"
+DEMO_USER="${DEMO_USER:?DEMO_USER 미설정 (repo root .env 필요)}"
 AGENT_NAME="aiops_demo_${DEMO_USER}_monitor_a2a"
 OAUTH_PROVIDER_NAME="${AGENT_NAME}_gateway_provider"
 ECR_REPO="bedrock-agentcore-${AGENT_NAME}"
 LOG_GROUP="/aws/bedrock-agentcore/runtimes/${AGENT_NAME}"
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 GREEN='\033[0;32m'; YELLOW='\033[1;33m'; RED='\033[0;31m'; NC='\033[0m'
 
 echo -e "${YELLOW}=== Phase 6a Monitor A2A teardown — ${AGENT_NAME} ===${NC}"
-
-if [ -f "${SCRIPT_DIR}/.env" ]; then set -a; source "${SCRIPT_DIR}/.env"; set +a; fi
 
 RUNTIME_ID="${RUNTIME_ID:-$(aws bedrock-agentcore-control list-agent-runtimes --region "$REGION" \
     --query "agentRuntimes[?agentRuntimeName=='${AGENT_NAME}'].agentRuntimeId" --output text 2>/dev/null || echo '')}"
@@ -58,7 +62,7 @@ else
 fi
 
 echo -e "${YELLOW}[5/6] IAM Role 삭제${NC}"
-ROLE_NAME="${ROLE_ARN##*/}"
+ROLE_NAME="${ROLE_ARN:+${ROLE_ARN##*/}}"
 if [ -n "$ROLE_NAME" ] && [ "$ROLE_NAME" != "None" ] && aws iam get-role --role-name "$ROLE_NAME" >/dev/null 2>&1; then
     for POLICY in $(aws iam list-role-policies --role-name "$ROLE_NAME" --query 'PolicyNames' --output text); do
         aws iam delete-role-policy --role-name "$ROLE_NAME" --policy-name "$POLICY"
@@ -85,13 +89,13 @@ if [ -f "${SCRIPT_DIR}/.env" ]; then
     echo -e "  ${GREEN}✓ ${SCRIPT_DIR}/.env cleanup${NC}"
 fi
 
-echo -e "${YELLOW}[verify] Phase 4 자원 보존 검증${NC}"
-P4_MONITOR_ID=$(aws bedrock-agentcore-control list-agent-runtimes --region "$REGION" \
+echo -e "${YELLOW}[verify] dependency 보존 확인 (monitor HTTP Runtime)${NC}"
+MONITOR_HTTP_ID=$(aws bedrock-agentcore-control list-agent-runtimes --region "$REGION" \
     --query "agentRuntimes[?agentRuntimeName=='aiops_demo_${DEMO_USER}_monitor'].agentRuntimeId" --output text 2>/dev/null || echo "")
-if [ -n "$P4_MONITOR_ID" ] && [ "$P4_MONITOR_ID" != "None" ]; then
-    echo -e "  ${GREEN}✓ Phase 4 monitor (HTTP) 보존 (${P4_MONITOR_ID})${NC}"
+if [ -n "$MONITOR_HTTP_ID" ] && [ "$MONITOR_HTTP_ID" != "None" ]; then
+    echo -e "  ${GREEN}✓ monitor (HTTP) Runtime 보존 (${MONITOR_HTTP_ID})${NC}"
 else
-    echo -e "  ${RED}❌ Phase 4 monitor 미발견${NC}"
+    echo -e "  - monitor (HTTP) Runtime 미존재 (이미 정리되었거나 미배포)"
 fi
 
 echo -e "${GREEN}=== ✅ Phase 6a Monitor A2A teardown 완료 ===${NC}"

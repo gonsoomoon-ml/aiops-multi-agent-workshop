@@ -15,13 +15,13 @@ inbound (operator → Supervisor):
 outbound (Supervisor → 2 sub-agents):
   - A2A protocol over HTTPS — `https://bedrock-agentcore.{region}.amazonaws.com/runtimes/
     {quote(arn)}/invocations/`
-  - **Cognito Client C M2M token** (Bearer) — Phase 2 의 기존 Client C 재사용. AgentCore
+  - **Cognito Client M2M token** (Bearer) — Phase 2 의 기존 Client 재사용. AgentCore
     customJWTAuthorizer 가 aud 만 검증 → Gateway scope 토큰이 sub-agent 도 통과.
   - AgentCard discovery: `<base>/.well-known/agent-card.json`
 
 사전 조건 (Runtime 환경변수):
     - SUPERVISOR_MODEL_ID
-    - OAUTH_PROVIDER_NAME — Cognito Client C M2M provider (Phase 4 incident 와 동일 키)
+    - OAUTH_PROVIDER_NAME — Cognito Client M2M provider (Phase 4 incident 와 동일 키)
     - MONITOR_A2A_RUNTIME_ARN, INCIDENT_A2A_RUNTIME_ARN — 2 sub-agents
       (Change Agent 는 후속 phase 로 연기 — Phase 6a 단순화)
     - DEMO_USER, AWS_REGION
@@ -68,7 +68,7 @@ except ModuleNotFoundError:
     from agents.supervisor.shared.agent import create_supervisor_agent  # 로컬 dev
 
 REGION = os.environ.get("AWS_REGION", "us-west-2")
-# Option X — 단일 OAuth provider (Client C 재사용, Phase 4 incident 와 동일 env 키)
+# Option X — 단일 OAuth provider (Client 재사용, Phase 4 incident 와 동일 env 키)
 OAUTH_PROVIDER_NAME = os.environ["OAUTH_PROVIDER_NAME"]
 COGNITO_GATEWAY_SCOPE = os.environ["COGNITO_GATEWAY_SCOPE"]
 DEMO_USER = os.environ.get("DEMO_USER", "ubuntu")
@@ -101,9 +101,9 @@ def _runtime_url(arn: str) -> str:
     # event-loop 격리 이슈 해당 없음. 기본 cache 활용 (~1시간 유효).
 )
 async def _fetch_a2a_token(*, bearer_token: str = "") -> str:
-    """A2A 호출용 Bearer JWT — Client C M2M (Phase 2 재사용).
+    """A2A 호출용 Bearer JWT — Client M2M (Phase 2 재사용).
 
-    AgentCore customJWTAuthorizer 가 aud (= Client C id) 만 검증하므로 Gateway scope
+    AgentCore customJWTAuthorizer 가 aud (= Client id) 만 검증하므로 Gateway scope
     토큰이 sub-agent A2A inbound 에도 통과. scope `aiops-demo-${user}-resource-server/
     invoke` 가 다중 audience 에 사용되는 패턴.
     """
@@ -113,7 +113,7 @@ async def _fetch_a2a_token(*, bearer_token: str = "") -> str:
 async def _call_subagent(arn: str, query: str) -> str:
     """A2A 호출 1회 — Bearer JWT + AgentCard discovery + send_message → text 응답.
 
-    1. Cognito Client C M2M token 획득 (`@requires_access_token`, Phase 2 재사용)
+    1. Cognito Client M2M token 획득 (`@requires_access_token`, Phase 2 재사용)
     2. httpx.AsyncClient 에 Bearer 헤더 + Session-Id 헤더 주입
     3. A2ACardResolver 로 sub-agent 의 AgentCard fetch (`/.well-known/agent-card.json`)
     4. ClientFactory 로 A2AClient 생성, send_message — Task lifecycle (working → completed)

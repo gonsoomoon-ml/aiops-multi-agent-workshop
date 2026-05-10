@@ -26,4 +26,5 @@ fi
 echo "[chaos] EC2 start: $INSTANCE_ID (region=$REGION)"
 aws ec2 start-instances --region "$REGION" --instance-ids "$INSTANCE_ID" >/dev/null
 aws ec2 wait instance-running --region "$REGION" --instance-ids "$INSTANCE_ID"
-echo "[chaos] running 상태 확인 (Flask 부팅 ~30초 더 필요)"
+echo "[chaos] running 상태 확인 — Flask 부팅 ~30초 + alarm 'payment-${DEMO_USER}-status-check' OK 복원까지 추가 ~1분"
+echo "[chaos] 모니터링: 'aws cloudwatch describe-alarms --alarm-names payment-${DEMO_USER}-status-check --region $REGION'"

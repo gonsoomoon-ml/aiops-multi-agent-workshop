@@ -141,8 +141,8 @@ def launch_runtime(runtime):
 def attach_extras_and_oauth_provider(launch_result) -> None:
     """[4/5] toolkit 이 처리 안 하는 Phase 3 전용 자원/권한 부착.
 
-    - IAM ``Phase3RuntimeExtras`` inline policy: GetResourceOauth2Token + Cognito secret read
-    - ``OAuth2CredentialProvider``: Cognito Client C 의 client_credentials 흐름 자동화 (D2)
+    - IAM ``MonitorRuntimeExtras`` inline policy: GetResourceOauth2Token + Cognito secret read
+    - ``OAuth2CredentialProvider``: Cognito Client 의 client_credentials 흐름 자동화 (D2)
     """
     print(f"{YELLOW}[4/5] IAM 추가 권한 + OAuth2CredentialProvider 생성 중...{NC}")
 
@@ -175,10 +175,10 @@ def attach_extras_and_oauth_provider(launch_result) -> None:
     }
     iam.put_role_policy(
         RoleName=role_name,
-        PolicyName="Phase3RuntimeExtras",
+        PolicyName="MonitorRuntimeExtras",
         PolicyDocument=json.dumps(extras_policy),
     )
-    print(f"{GREEN}✅ IAM inline policy 부착: {role_name}/Phase3RuntimeExtras{NC}")
+    print(f"{GREEN}✅ IAM inline policy 부착: {role_name}/MonitorRuntimeExtras{NC}")
 
     user_pool_id = os.environ["COGNITO_USER_POOL_ID"]
     domain = os.environ["COGNITO_DOMAIN"]
@@ -188,8 +188,8 @@ def attach_extras_and_oauth_provider(launch_result) -> None:
             credentialProviderVendor="CustomOauth2",
             oauth2ProviderConfigInput={
                 "customOauth2ProviderConfig": {
-                    "clientId": os.environ["COGNITO_CLIENT_C_ID"],
-                    "clientSecret": os.environ["COGNITO_CLIENT_C_SECRET"],
+                    "clientId": os.environ["COGNITO_CLIENT_ID"],
+                    "clientSecret": os.environ["COGNITO_CLIENT_SECRET"],
                     "oauthDiscovery": {
                         "authorizationServerMetadata": {
                             "issuer": f"https://cognito-idp.{REGION}.amazonaws.com/{user_pool_id}",

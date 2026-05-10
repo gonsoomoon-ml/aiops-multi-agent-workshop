@@ -8,7 +8,7 @@ Idempotent: 같은 이름의 Gateway/Target 있으면 기존 ID 재사용.
 deploy.sh 가 CFN outputs 를 환경변수로 주입한 뒤 호출:
     GATEWAY_IAM_ROLE_ARN
     COGNITO_USER_POOL_ID
-    COGNITO_CLIENT_C_ID
+    COGNITO_CLIENT_ID
     COGNITO_GATEWAY_SCOPE
     LAMBDA_HISTORY_MOCK_ARN
     LAMBDA_CLOUDWATCH_WRAPPER_ARN
@@ -17,7 +17,7 @@ deploy.sh 가 CFN outputs 를 환경변수로 주입한 뒤 호출:
     들어오는 JWT
       ↓ Gateway authorizer
       ① 서명 검증     ← discoveryUrl (UserPoolId 로부터)
-      ② audience 검증 ← allowedClients=[Client C ID]
+      ② audience 검증 ← allowedClients=[Client ID]
       ③ scope 검증    ← allowedScopes=[<resource-server>/invoke]
       → 통과 시 Target 호출
 
@@ -108,7 +108,7 @@ def _client():
     return boto3.client("bedrock-agentcore-control", region_name=REGION)
 
 
-def create_gateway(gw, role_arn, pool_id, client_c_id, scope):
+def create_gateway(gw, role_arn, pool_id, client_id, scope):
     print("\n=== Step 1: AgentCore Gateway 생성 ===")
     existing = next(
         (g for g in gw.list_gateways().get("items", []) if g.get("name") == GATEWAY_NAME),
@@ -130,7 +130,7 @@ def create_gateway(gw, role_arn, pool_id, client_c_id, scope):
         authorizerConfiguration={
             "customJWTAuthorizer": {
                 "discoveryUrl": discovery_url,
-                "allowedClients": [client_c_id],
+                "allowedClients": [client_id],
                 "allowedScopes": [scope],
             }
         },
@@ -178,7 +178,7 @@ def main():
         "DEMO_USER",
         "GATEWAY_IAM_ROLE_ARN",
         "COGNITO_USER_POOL_ID",
-        "COGNITO_CLIENT_C_ID",
+        "COGNITO_CLIENT_ID",
         "COGNITO_GATEWAY_SCOPE",
         "LAMBDA_HISTORY_MOCK_ARN",
         "LAMBDA_CLOUDWATCH_WRAPPER_ARN",
@@ -194,7 +194,7 @@ def main():
         gw,
         role_arn=os.environ["GATEWAY_IAM_ROLE_ARN"],
         pool_id=os.environ["COGNITO_USER_POOL_ID"],
-        client_c_id=os.environ["COGNITO_CLIENT_C_ID"],
+        client_id=os.environ["COGNITO_CLIENT_ID"],
         scope=os.environ["COGNITO_GATEWAY_SCOPE"],
     )
     gateway_id = gateway["gatewayId"]

@@ -27,7 +27,7 @@ DEMO_USER="${DEMO_USER:-${USER:-ubuntu}}"
     || fail "DEMO_USER='$DEMO_USER' 잘못된 형식 (영문/숫자/하이픈만 ≤16자)"
 
 ACCOUNT_ID="$(aws sts get-caller-identity --query Account --output text)"
-STACK="aiops-demo-${DEMO_USER}-phase2-cognito"
+STACK="aiops-demo-${DEMO_USER}-cognito-gateway"
 DEPLOY_BUCKET="aiops-demo-${DEMO_USER}-deploy-${ACCOUNT_ID}-${REGION}"
 
 log "region=$REGION demo_user=$DEMO_USER account=$ACCOUNT_ID"
@@ -58,7 +58,7 @@ log "cfn package — Lambda Code 디렉토리 zip + S3 업로드"
 aws cloudformation package \
     --template-file "$PROJECT_ROOT/infra/cognito-gateway/cognito.yaml" \
     --s3-bucket "$DEPLOY_BUCKET" \
-    --s3-prefix "phase2-cognito" \
+    --s3-prefix "cognito-gateway" \
     --region "$REGION" \
     --output-template-file "$PROJECT_ROOT/infra/cognito-gateway/cognito.packaged.yaml" >/dev/null
 
@@ -79,17 +79,17 @@ get_output() {
 }
 export COGNITO_USER_POOL_ID="$(get_output UserPoolId)"
 export COGNITO_DOMAIN="$(get_output Domain)"
-export COGNITO_CLIENT_C_ID="$(get_output ClientCId)"
+export COGNITO_CLIENT_ID="$(get_output ClientId)"
 export COGNITO_GATEWAY_SCOPE="$(get_output ResourceServerScope)"
 export GATEWAY_IAM_ROLE_ARN="$(get_output GatewayIamRoleArn)"
 export LAMBDA_HISTORY_MOCK_ARN="$(get_output LambdaHistoryMockArn)"
 export LAMBDA_CLOUDWATCH_WRAPPER_ARN="$(get_output LambdaCloudWatchWrapperArn)"
 
 # Cognito Client Secret 별도 조회 (CFN output 미노출)
-export COGNITO_CLIENT_C_SECRET="$(aws cognito-idp describe-user-pool-client \
+export COGNITO_CLIENT_SECRET="$(aws cognito-idp describe-user-pool-client \
     --region "$REGION" \
     --user-pool-id "$COGNITO_USER_POOL_ID" \
-    --client-id "$COGNITO_CLIENT_C_ID" \
+    --client-id "$COGNITO_CLIENT_ID" \
     --query 'UserPoolClient.ClientSecret' --output text)"
 
 # ── 5. boto3 setup — Gateway + 2 Target ─────────
@@ -118,8 +118,8 @@ update_env() {
 }
 update_env COGNITO_USER_POOL_ID         "$COGNITO_USER_POOL_ID"
 update_env COGNITO_DOMAIN               "$COGNITO_DOMAIN"
-update_env COGNITO_CLIENT_C_ID          "$COGNITO_CLIENT_C_ID"
-update_env COGNITO_CLIENT_C_SECRET      "$COGNITO_CLIENT_C_SECRET"
+update_env COGNITO_CLIENT_ID          "$COGNITO_CLIENT_ID"
+update_env COGNITO_CLIENT_SECRET      "$COGNITO_CLIENT_SECRET"
 update_env COGNITO_GATEWAY_SCOPE        "$COGNITO_GATEWAY_SCOPE"
 update_env GATEWAY_ID                   "$GATEWAY_ID"
 update_env GATEWAY_URL                  "$GATEWAY_URL"

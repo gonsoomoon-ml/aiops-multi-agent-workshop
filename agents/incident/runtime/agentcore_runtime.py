@@ -5,7 +5,7 @@ agentcore_runtime.py — Phase 4 Incident Agent Runtime 진입점
 Monitor (`agents/monitor/runtime/agentcore_runtime.py`) 와 동일 골격 — `@app.entrypoint`
 + OAuth2CredentialProvider 자동 inject + MCPClient → Gateway 호출. 차이점:
   - agent_name = ``aiops_demo_${DEMO_USER}_incident``
-  - tool filter = ``github-storage___`` prefix (Incident 는 runbook lookup 만)
+  - tool filter = ``${STORAGE_BACKEND}-storage___`` prefix (env 기반: s3 default / github 선택)
   - payload = ``{"alarm_name": "..."}`` (Monitor 의 mode/query 와 다름)
   - Single mode (past/live 분기 없음)
 
@@ -69,8 +69,9 @@ except ModuleNotFoundError:
 OAUTH_PROVIDER_NAME = os.environ["OAUTH_PROVIDER_NAME"]
 COGNITO_GATEWAY_SCOPE = os.environ["COGNITO_GATEWAY_SCOPE"]
 
-# Incident 는 single mode — github-storage Target 만 (phase4.md §3-5)
-TOOL_TARGET_PREFIX = "github-storage___"
+# Incident 는 single mode — storage Target 만 (phase4.md §3-5).
+# Backend 선택은 env STORAGE_BACKEND 로 (s3 default / github 선택). Lambda 응답 shape 동형.
+TOOL_TARGET_PREFIX = f"{os.environ.get('STORAGE_BACKEND', 's3')}-storage___"
 SYSTEM_PROMPT_FILENAME = "system_prompt.md"
 
 

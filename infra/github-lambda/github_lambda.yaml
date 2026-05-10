@@ -79,9 +79,9 @@ Resources:
   GatewayInvokeGithubLambdaPolicy:
     Type: AWS::IAM::Policy
     Properties:
-      PolicyName: !Sub "aiops-demo-${DemoUser}-phase4-gateway-invoke-github"
+      PolicyName: !Sub "aiops-demo-${DemoUser}-gateway-invoke-github"
       Roles:
-        - !Sub "aiops-demo-${DemoUser}-phase2-gateway-role"   # Phase 2 cognito.yaml 의 GatewayIamRole 이름
+        - !Sub "aiops-demo-${DemoUser}-gateway-role"   # Phase 2 cognito.yaml 의 GatewayIamRole 이름
       PolicyDocument:
         Version: "2012-10-17"
         Statement:

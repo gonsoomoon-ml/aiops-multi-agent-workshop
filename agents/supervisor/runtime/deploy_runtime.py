@@ -7,9 +7,9 @@ Phase 4 incident `deploy_runtime.py` 와 다른 점 (Option X):
   - **HTTP protocol** (operator 진입) — Phase 4 와 동일
   - **inbound authorizer 미설정** → SigV4 IAM default (Operator CLI 가 boto3
     invoke_agent_runtime 사용 — Phase 4 invoke 패턴 동일)
-  - **OAuth provider = Phase 2 Client C 재사용** (Phase 4 incident 와 동일 Client +
-    동일 provider 명명). sub-agent A2A 호출용 Bearer 도 Client C 토큰 — AgentCore
-    customJWTAuthorizer 가 aud (= Client C id) 만 검증해서 통과
+  - **OAuth provider = Phase 2 Client 재사용** (Phase 4 incident 와 동일 Client +
+    동일 provider 명명). sub-agent A2A 호출용 Bearer 도 Client 토큰 — AgentCore
+    customJWTAuthorizer 가 aud (= Client id) 만 검증해서 통과
   - **sub-agent ARN env vars** — MONITOR_A2A_RUNTIME_ARN / INCIDENT_A2A_RUNTIME_ARN
     (2 sub-agent 의 .env 에서 cross-load — Change 는 후속 phase 로 연기)
   - Build context: supervisor/shared 만 (self-contained, helper 의존 없음)
@@ -18,17 +18,17 @@ Phase 4 incident `deploy_runtime.py` 와 다른 점 (Option X):
     uv run agents/supervisor/runtime/deploy_runtime.py
 
 사전 조건:
-    - Phase 0/2/3/4 deploy 완료 (Phase 2 Client C 존재 — repo .env)
+    - Phase 0/2/3/4 deploy 완료 (Phase 2 Client 존재 — repo .env)
     - monitor_a2a + incident_a2a Runtime 모두 deploy 완료
       → 각 .env 에 MONITOR_A2A_RUNTIME_ARN / INCIDENT_A2A_RUNTIME_ARN 작성됨
-    - repo `.env` 에 COGNITO_CLIENT_C_ID, COGNITO_CLIENT_C_SECRET (Phase 2 산출물)
+    - repo `.env` 에 COGNITO_CLIENT_ID, COGNITO_CLIENT_SECRET (Phase 2 산출물)
 
 수행 단계:
     1. supervisor/shared → 빌드 컨텍스트 복사
     2. sub-agent ARN cross-load (2개의 runtime/.env 에서 — monitor_a2a + incident_a2a)
     3. Runtime.configure(protocol="HTTP")  — authorizer 미설정 = SigV4 default
     4. Runtime.launch
-    5. IAM ``Phase6aSupervisorRuntimeExtras`` + OAuth provider (Phase 2 Client C 재사용)
+    5. IAM ``SupervisorRuntimeExtras`` + OAuth provider (Phase 2 Client 재사용)
     6. READY 대기 + runtime/.env 저장
 """
 import json
@@ -58,7 +58,7 @@ NC = "\033[0m"
 DEMO_USER = os.environ["DEMO_USER"]
 REGION = os.environ.get("AWS_REGION", "us-west-2")
 AGENT_NAME = f"aiops_demo_{DEMO_USER}_supervisor"
-# Option X — Phase 2 Client C 재사용. Provider 명명은 Phase 4 incident 와 동일 패턴.
+# Option X — Phase 2 Client 재사용. Provider 명명은 Phase 4 incident 와 동일 패턴.
 OAUTH_PROVIDER_NAME = f"{AGENT_NAME}_gateway_provider"
 
 
@@ -150,8 +150,8 @@ def launch_runtime(runtime, subagent_arns: dict):
 
 
 def attach_extras_and_oauth_provider(launch_result) -> None:
-    """[5/6] IAM + OAuth provider — Phase 2 Client C 재사용 (sub-agent A2A 호출용)."""
-    print(f"{YELLOW}[5/6] IAM + OAuth provider (Phase 2 Client C 재사용) 부착...{NC}")
+    """[5/6] IAM + OAuth provider — Phase 2 Client 재사용 (sub-agent A2A 호출용)."""
+    print(f"{YELLOW}[5/6] IAM + OAuth provider (Phase 2 Client 재사용) 부착...{NC}")
 
     agentcore_control = boto3.client("bedrock-agentcore-control", region_name=REGION)
     runtime_info = agentcore_control.get_agent_runtime(agentRuntimeId=launch_result.agent_id)
@@ -181,10 +181,10 @@ def attach_extras_and_oauth_provider(launch_result) -> None:
     }
     iam.put_role_policy(
         RoleName=role_name,
-        PolicyName="Phase6aSupervisorRuntimeExtras",
+        PolicyName="SupervisorRuntimeExtras",
         PolicyDocument=json.dumps(extras_policy),
     )
-    print(f"{GREEN}✅ IAM inline policy 부착: {role_name}/Phase6aSupervisorRuntimeExtras{NC}")
+    print(f"{GREEN}✅ IAM inline policy 부착: {role_name}/SupervisorRuntimeExtras{NC}")
 
     user_pool_id = os.environ["COGNITO_USER_POOL_ID"]
     domain = os.environ["COGNITO_DOMAIN"]
@@ -194,9 +194,9 @@ def attach_extras_and_oauth_provider(launch_result) -> None:
             credentialProviderVendor="CustomOauth2",
             oauth2ProviderConfigInput={
                 "customOauth2ProviderConfig": {
-                    # Phase 2 Client C 재사용 (Phase 4 incident provider 와 동일).
-                    "clientId": os.environ["COGNITO_CLIENT_C_ID"],
-                    "clientSecret": os.environ["COGNITO_CLIENT_C_SECRET"],
+                    # Phase 2 Client 재사용 (Phase 4 incident provider 와 동일).
+                    "clientId": os.environ["COGNITO_CLIENT_ID"],
+                    "clientSecret": os.environ["COGNITO_CLIENT_SECRET"],
                     "oauthDiscovery": {
                         "authorizationServerMetadata": {
                             "issuer": f"https://cognito-idp.{REGION}.amazonaws.com/{user_pool_id}",
@@ -208,7 +208,7 @@ def attach_extras_and_oauth_provider(launch_result) -> None:
                 },
             },
         )
-        print(f"{GREEN}✅ OAuth Provider 생성 (Phase 2 Client C 재사용): {OAUTH_PROVIDER_NAME}{NC}\n")
+        print(f"{GREEN}✅ OAuth Provider 생성 (Phase 2 Client 재사용): {OAUTH_PROVIDER_NAME}{NC}\n")
     except ClientError as e:
         code = e.response["Error"]["Code"]
         message = e.response["Error"].get("Message", "")
@@ -280,9 +280,9 @@ def print_summary(launch_result) -> None:
     print(f"{BLUE}{'=' * 60}{NC}")
     print(f"   Runtime 이름:        {AGENT_NAME}")
     print(f"   Runtime ARN:         {launch_result.agent_arn}")
-    print(f"   OAuth Provider:      {OAUTH_PROVIDER_NAME}  (Phase 2 Client C 재사용)")
+    print(f"   OAuth Provider:      {OAUTH_PROVIDER_NAME}  (Phase 2 Client 재사용)")
     print(f"   Inbound:             HTTP, SigV4 IAM (Operator CLI 가 boto3 호출)")
-    print(f"   Outbound:            A2A → 2 sub-agents (Client C M2M Bearer)")
+    print(f"   Outbound:            A2A → 2 sub-agents (Client M2M Bearer)")
     print()
     print(f"   다음 단계:")
     print(f"   1. Supervisor 단독 invoke (admin SIGV4 디버깅):")

@@ -25,5 +25,6 @@ fi
 
 echo "[chaos] EC2 stop: $INSTANCE_ID (region=$REGION)"
 aws ec2 stop-instances --region "$REGION" --instance-ids "$INSTANCE_ID" >/dev/null
-echo "[chaos] stop 명령 전송 — alarm 발화까지 ~2분 대기"
+echo "[chaos] stop 명령 전송 — alarm 'payment-${DEMO_USER}-status-check' 발화까지 ~1분 대기 (EvaluationPeriods=1)"
+echo "[chaos] 모니터링: CloudWatch console 또는 'aws cloudwatch describe-alarms --alarm-names payment-${DEMO_USER}-status-check --region $REGION'"
 echo "[chaos] 복원: bash infra/ec2-simulator/chaos/start_instance.sh"

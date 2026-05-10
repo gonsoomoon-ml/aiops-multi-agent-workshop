@@ -45,7 +45,7 @@ uv run agents/incident/runtime/deploy_runtime.py
 `deploy.sh` 가 수행하는 것:
 1. Phase 2 stack + `GATEWAY_ID` + SSM PAT 사전 검증.
 2. `cfn package` → S3 (Phase 2 의 `aiops-demo-${DEMO_USER}-deploy-*` bucket 재사용).
-3. CFN deploy `aiops-demo-${DEMO_USER}-phase4-github` (Lambda + Role + Phase 2 Role 에 inline policy 추가).
+3. CFN deploy `aiops-demo-${DEMO_USER}-github-lambda` (Lambda + Role + Phase 2 Role 에 inline policy 추가).
 4. boto3 로 Gateway Target `github-storage` create-or-update — 재배포 시 lambdaArn + schema 자동 동기화.
 5. `.env` 에 `GITHUB_STORAGE_LAMBDA_ARN` 갱신.
 
@@ -71,9 +71,9 @@ bash infra/github-lambda/teardown.sh
 
 `teardown.sh` 가 수행하는 것:
 1. Gateway Target `github-storage` 삭제 (`GATEWAY_ID` 미설정 시 `list-gateways` 자동 복구).
-2. CFN stack delete — Lambda + Role + Phase 2 Role 에서 inline policy 자동 detach.
+2. CFN stack delete — Lambda + Role + cognito-gateway 의 GatewayIamRole 에서 inline policy 자동 detach.
 3. `.env` 에서 `GITHUB_STORAGE_LAMBDA_ARN` 제거.
-4. **Phase 2 stack/Gateway 보존 검증** + **Phase 2 Role 의 phase4 inline policy 정상 detach 검증**.
+4. **cognito-gateway stack/Gateway 보존 검증** + **GatewayIamRole 의 invoke-github inline policy 정상 detach 검증**.
 
 ## 파일 구성
 

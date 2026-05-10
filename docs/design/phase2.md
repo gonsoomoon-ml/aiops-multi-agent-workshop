@@ -35,7 +35,7 @@ Monitor Agent 가 사용하는 도구(`alarm_history`, `cloudwatch_describe_alar
 | AgentCore | Gateway | 1 (boto3 `setup_gateway.py` 로 생성, educational) |
 | AgentCore | Gateway Target | 2 (cloudwatch_wrapper + history_mock Lambda — boto3 setup) |
 | Lambda | 함수 (cloudwatch_wrapper + history_mock) | 2 |
-| Cognito | UserPool + Domain + ResourceServer + Client C | 4 (Phase 4+ 와 공유 예정 — Phase 2 = Client C 만) |
+| Cognito | UserPool + Domain + ResourceServer + Client | 4 (Phase 4+ 와 공유 예정 — Phase 2 = Client 만) |
 | IAM | Gateway execution role + Lambda execution role × 2 | 3 |
 | S3 | DEPLOY_BUCKET (phase-shared) | 1 |
 | CloudFormation | 새 스택 | **1** (cognito.yaml 통합 — UserPool + Lambda + IAM Role) |
@@ -59,7 +59,7 @@ Monitor Agent 가 사용하는 도구(`alarm_history`, `cloudwatch_describe_alar
 ```
 Monitor Agent (local Python, dev machine)
     │
-    │ ① Cognito Client C 자격증명 (.env: CLIENT_ID + CLIENT_SECRET)
+    │ ① Cognito Client 자격증명 (.env: CLIENT_ID + CLIENT_SECRET)
     ▼
 Cognito UserPool token endpoint
     │
@@ -70,7 +70,7 @@ Monitor Agent (token 메모리 캐시)
     │ ③ MCP streamable-http POST + Authorization: Bearer <jwt>
     ▼
 AgentCore Gateway
-    │  - CustomJWTAuthorizer: Cognito DiscoveryUrl + AllowedClients=[Client C]
+    │  - CustomJWTAuthorizer: Cognito DiscoveryUrl + AllowedClients=[Client]
     │  - 토큰 검증: scope에 `<resource-server>/invoke` 포함 여부
     │
     ├─ Target 1 (Smithy → AWS SigV4) → CloudWatch API
@@ -85,7 +85,7 @@ AgentCore Gateway
 
 Phase 3 에서 Monitor 를 AgentCore Runtime 으로 승격하면:
 - ① Cognito client_credentials 직접 호출 코드 **제거**
-- 새로 `AWS::BedrockAgentCore::OAuth2CredentialProvider` **CFN native 자원** 추가 (CredentialProviderVendor=`CustomOauth2`, ClientId/Secret = Cognito Client C). 2026-05 시점 GA — A2A 샘플(2025-04)의 Lambda Custom Resource 패턴은 더 이상 불필요.
+- 새로 `AWS::BedrockAgentCore::OAuth2CredentialProvider` **CFN native 자원** 추가 (CredentialProviderVendor=`CustomOauth2`, ClientId/Secret = Cognito Client). 2026-05 시점 GA — A2A 샘플(2025-04)의 Lambda Custom Resource 패턴은 더 이상 불필요.
 - Runtime 코드가 `bedrock_agentcore_client.get_resource_oauth2_token(workloadIdentityToken=..., resourceCredentialProviderName=<provider>, scopes=[], oauth2Flow="M2M")` 호출 → access token 자동 획득
 - 호출 패턴은 A2A 샘플 `monitoring_strands_agent/utils.py:27-48` 그대로 (Lambda Custom Resource 부분만 CFN 자원으로 대체)
 
@@ -93,7 +93,7 @@ Phase 3 에서 Monitor 를 AgentCore Runtime 으로 승격하면:
 
 ### 2-3. Cognito stack 도입 범위 (decision)
 
-**Phase 2 = Client C 만** (minimum). Client A/B 는 Phase 4 에서 stack update 로 추가.
+**Phase 2 = Client 만** (minimum). Client A/B 는 Phase 4 에서 stack update 로 추가.
 
 ### 2-4. Cognito UserPool 이름 (decision)
 
@@ -105,7 +105,7 @@ Phase 3 에서 Monitor 를 AgentCore Runtime 으로 승격하면:
 |---|---|
 | Gateway 이름 | `aiops-demo-${DEMO_USER}-gateway` |
 | Authorizer | Cognito UserPool (OIDC) |
-| Audience | Cognito Client C |
+| Audience | Cognito Client |
 | Required scope | `gateway/invoke` (UserPool resource server 정의) |
 | Endpoint | `https://<gateway-id>.gateway.bedrock-agentcore.<region>.amazonaws.com/mcp` |
 
@@ -129,8 +129,8 @@ Phase 2 Monitor 코드:
 # 임시 (Phase 3 에서 제거):
 token = requests.post(cognito_token_url, data={
     "grant_type": "client_credentials",
-    "client_id": COGNITO_CLIENT_C_ID,
-    "client_secret": COGNITO_CLIENT_C_SECRET,
+    "client_id": COGNITO_CLIENT_ID,
+    "client_secret": COGNITO_CLIENT_SECRET,
     "scope": "gateway/invoke",
 }).json()["access_token"]
 
@@ -162,7 +162,7 @@ mcp_client = MCPClient(transport=StreamableHttpTransport(url=GATEWAY_URL))
 
 | 단위 | 자원 | 배포 방식 | 이유 |
 |---|---|---|---|
-| **Stack 1 — `cognito.yaml`** (CFN) | UserPool + Domain + ResourceServer + Client C + 2 Lambda 함수 + 2 Lambda execution role + Gateway IAM Role | **CFN** | 표준 AWS 자원 — declarative + idempotent + rollback. ec-customer-support 의 "사전 setup" 패턴 |
+| **Stack 1 — `cognito.yaml`** (CFN) | UserPool + Domain + ResourceServer + Client + 2 Lambda 함수 + 2 Lambda execution role + Gateway IAM Role | **CFN** | 표준 AWS 자원 — declarative + idempotent + rollback. ec-customer-support 의 "사전 setup" 패턴 |
 | **Step 2 — `setup_gateway.py`** (boto3) | Gateway + GatewayTarget × 2 (CloudWatch wrapper + history mock) | **boto3** (`bedrock-agentcore-control` client) | **AgentCore 학습 핵심** — step 별 print + 응답 가시화. ec-customer-support 의 lab-03 패턴 차용 |
 
 → 진입점: `bash infra/cognito-gateway/deploy.sh` 가 (1) CFN stack deploy → (2) `setup_gateway.py` 호출 → (3) `.env` 갱신 단일 흐름.
@@ -173,24 +173,24 @@ mcp_client = MCPClient(transport=StreamableHttpTransport(url=GATEWAY_URL))
 - yaml 안에 묻힌 spec 학습 부담 회피
 - 사용자 own codebase (ec-customer-support) 와 동일 mental model
 
-> **Stack 이름 변경**: 이전 design `aiops-demo-${DEMO_USER}-phase2-cognito` 와 `-phase2-gateway` 였으나, hybrid 채택 후 단일 stack: `aiops-demo-${DEMO_USER}-phase2-cognito` (Cognito + Lambda + IAM 통합). Gateway 는 CFN stack 외 (boto3 자원 — `aws cloudformation describe-stacks` 으로 조회 안 됨, 대신 `aws bedrock-agentcore list-gateways`).
+> **Stack 이름 변경**: 이전 design `aiops-demo-${DEMO_USER}-cognito-gateway` 와 `-phase2-gateway` 였으나, hybrid 채택 후 단일 stack: `aiops-demo-${DEMO_USER}-cognito-gateway` (Cognito + Lambda + IAM 통합). Gateway 는 CFN stack 외 (boto3 자원 — `aws cloudformation describe-stacks` 으로 조회 안 됨, 대신 `aws bedrock-agentcore list-gateways`).
 
 ### 3-2. Cognito stack 자원 (CFN)
 
-CFN 스택 이름: `aiops-demo-${DEMO_USER}-phase2-cognito`
+CFN 스택 이름: `aiops-demo-${DEMO_USER}-cognito-gateway`
 
 | 자원 | 이름 | 핵심 속성 |
 |---|---|---|
 | `AWS::Cognito::UserPool` | `aiops-demo-${DEMO_USER}-userpool` | passwordless (M2M 만 사용), MFA off |
 | `AWS::Cognito::UserPoolDomain` | `aiops-demo-${DEMO_USER}` | (region-account 단위 unique) |
 | `AWS::Cognito::UserPoolResourceServer` | identifier = `aiops-demo-${DEMO_USER}-resource-server`, name=`Gateway Invoke` | scope `invoke` (full name = `aiops-demo-${DEMO_USER}-resource-server/invoke`) |
-| `AWS::Cognito::UserPoolClient` (Client C) | `aiops-demo-${DEMO_USER}-client-c` | `AllowedOAuthFlows=client_credentials`, `AllowedOAuthScopes=<resource-server-id>/invoke`, `GenerateSecret=true` |
+| `AWS::Cognito::UserPoolClient` (Client) | `aiops-demo-${DEMO_USER}-client` | `AllowedOAuthFlows=client_credentials`, `AllowedOAuthScopes=<resource-server-id>/invoke`, `GenerateSecret=true` |
 
 > ResourceServer Identifier 명명: A2A 샘플은 `${StackName}-resource-server` (cognito.yaml:63). 우리도 동일 패턴 사용 (multi-user prefix 자동 포함).
 
 **Outputs**:
-- `UserPoolId`, `Domain`, `ClientCId` (CFN output)
-- `ClientCSecret` — CFN output 으로는 secret 노출 X. **deploy.sh 가 stack deploy 후 `aws cognito-idp describe-user-pool-client` 로 별도 조회**해 `.env` 갱신 (A2A 샘플은 Lambda Custom Resource 로 Secrets Manager 에 저장하지만 우리는 `.env` 만 — minimum)
+- `UserPoolId`, `Domain`, `ClientId` (CFN output)
+- `ClientSecret` — CFN output 으로는 secret 노출 X. **deploy.sh 가 stack deploy 후 `aws cognito-idp describe-user-pool-client` 로 별도 조회**해 `.env` 갱신 (A2A 샘플은 Lambda Custom Resource 로 Secrets Manager 에 저장하지만 우리는 `.env` 만 — minimum)
 
 ### 3-3-A. CFN stack 추가 자원 (cognito.yaml 안에 통합)
 
@@ -206,7 +206,7 @@ cognito.yaml 가 표준 AWS 자원 모두 담당 — Section 3-2 의 Cognito 자
 **CFN Outputs** (deploy.sh 가 `setup_gateway.py` 에 주입):
 - `LambdaHistoryMockArn`, `LambdaCloudWatchWrapperArn`
 - `GatewayIamRoleArn`
-- (Cognito outputs: `UserPoolId`, `Domain`, `ClientCId`, `ResourceServerScope`)
+- (Cognito outputs: `UserPoolId`, `Domain`, `ClientId`, `ResourceServerScope`)
 
 ### 3-3-B. boto3 step (`setup_gateway.py`) — AgentCore 자원
 
@@ -230,7 +230,7 @@ DEMO_USER = os.environ["DEMO_USER"]
 
 gateway_client = boto3.client("bedrock-agentcore-control", region_name=REGION)
 
-def step1_create_gateway(role_arn, cognito_pool_id, client_c_id, scope) -> dict:
+def step1_create_gateway(role_arn, cognito_pool_id, client_id, scope) -> dict:
     print("\n=== Step 1: AgentCore Gateway 생성 ===")
     name = f"aiops-demo-{DEMO_USER}-gateway"
     # idempotent: list_gateways 후 매칭
@@ -247,7 +247,7 @@ def step1_create_gateway(role_arn, cognito_pool_id, client_c_id, scope) -> dict:
         authorizerType="CUSTOM_JWT",
         authorizerConfiguration={"customJWTAuthorizer": {
             "discoveryUrl": discovery_url,
-            "allowedClients": [client_c_id],
+            "allowedClients": [client_id],
             "allowedScopes": [scope],
         }},
     )
@@ -277,12 +277,12 @@ def main():
     # CFN outputs 를 환경변수로 주입 (deploy.sh 가 처리)
     role_arn = os.environ["GATEWAY_IAM_ROLE_ARN"]
     pool_id = os.environ["COGNITO_USER_POOL_ID"]
-    client_c_id = os.environ["COGNITO_CLIENT_C_ID"]
+    client_id = os.environ["COGNITO_CLIENT_ID"]
     scope = os.environ["COGNITO_GATEWAY_SCOPE"]
     lambda_cw = os.environ["LAMBDA_CLOUDWATCH_WRAPPER_ARN"]
     lambda_history = os.environ["LAMBDA_HISTORY_MOCK_ARN"]
 
-    gw = step1_create_gateway(role_arn, pool_id, client_c_id, scope)
+    gw = step1_create_gateway(role_arn, pool_id, client_id, scope)
     step2_create_target(gw["gatewayId"], "cloudwatch-wrapper", lambda_cw, CW_TOOL_SCHEMA)
     step2_create_target(gw["gatewayId"], "history-mock",       lambda_history, HISTORY_TOOL_SCHEMA)
 
@@ -304,7 +304,7 @@ if __name__ == "__main__":
 
 ### 3-4. IAM Role 권한 (Gateway execution)
 
-Role 이름: `aiops-demo-${DEMO_USER}-phase2-gateway-role`
+Role 이름: `aiops-demo-${DEMO_USER}-gateway-role`
 
 Trust policy: `bedrock-agentcore.amazonaws.com` assume
 
@@ -340,8 +340,8 @@ deploy.py / deploy.sh 가 채우는 .env 변수:
 # Phase 2: Cognito
 COGNITO_USER_POOL_ID=
 COGNITO_DOMAIN=
-COGNITO_CLIENT_C_ID=
-COGNITO_CLIENT_C_SECRET=    # ← Cognito describe-user-pool-client 로 별도 조회
+COGNITO_CLIENT_ID=
+COGNITO_CLIENT_SECRET=    # ← Cognito describe-user-pool-client 로 별도 조회
 
 # Phase 2: Gateway
 GATEWAY_ID=
@@ -354,7 +354,7 @@ LAMBDA_HISTORY_MOCK_ARN=
 | 옵션 | 위치 | 비교 |
 |---|---|---|
 | **(가)** `.env` 만 (gitignore 의존) — minimum | local file | Phase 0 patten 일관 (.env 만 사용). 단, 다중 dev machine 시 secret 공유 어려움 |
-| (나) SSM SecureString | `/aiops-demo/cognito-client-c-secret` | Phase 0 GitHub PAT 와 동일 패턴. dev machine 어디서나 boto3 로 조회 |
+| (나) SSM SecureString | `/aiops-demo/cognito-client-secret` | Phase 0 GitHub PAT 와 동일 패턴. dev machine 어디서나 boto3 로 조회 |
 
 **제 추천: (가)** — Phase 2 는 single dev machine 가정. `.env` 가 이미 gitignore + Phase 0 EC2 IP 등 다른 자원 정보 함께 있으므로 일관.
 
@@ -583,24 +583,24 @@ cp -r data/mock/phase1 infra/cognito-gateway/lambda/history_mock/data/mock/
 aws cloudformation package \
     --template-file infra/cognito-gateway/cognito.yaml \
     --s3-bucket "$DEPLOY_BUCKET" \
-    --s3-prefix "phase2-cognito" \
+    --s3-prefix "cognito-gateway" \
     --output-template-file infra/cognito-gateway/cognito.packaged.yaml
 
 # 3. CFN deploy (cognito.yaml 가 UserPool + Lambda + IAM Role 통합)
 aws cloudformation deploy --template-file infra/cognito-gateway/cognito.packaged.yaml \
-    --stack-name "aiops-demo-${DEMO_USER}-phase2-cognito" \
+    --stack-name "aiops-demo-${DEMO_USER}-cognito-gateway" \
     --capabilities CAPABILITY_NAMED_IAM \
     --parameter-overrides DemoUser="${DEMO_USER}"
 
 # 4. CFN outputs 환경변수 export
 export COGNITO_USER_POOL_ID=$(aws cloudformation describe-stacks --stack-name "..." --query 'Stacks[0].Outputs[?OutputKey==`UserPoolId`].OutputValue' --output text)
-export COGNITO_CLIENT_C_ID=...
+export COGNITO_CLIENT_ID=...
 export COGNITO_GATEWAY_SCOPE=...
 export GATEWAY_IAM_ROLE_ARN=...
 export LAMBDA_HISTORY_MOCK_ARN=...
 export LAMBDA_CLOUDWATCH_WRAPPER_ARN=...
 # Cognito Client Secret 별도 조회 (CFN output 미노출)
-export COGNITO_CLIENT_C_SECRET=$(aws cognito-idp describe-user-pool-client --user-pool-id "$COGNITO_USER_POOL_ID" --client-id "$COGNITO_CLIENT_C_ID" --query 'UserPoolClient.ClientSecret' --output text)
+export COGNITO_CLIENT_SECRET=$(aws cognito-idp describe-user-pool-client --user-pool-id "$COGNITO_USER_POOL_ID" --client-id "$COGNITO_CLIENT_ID" --query 'UserPoolClient.ClientSecret' --output text)
 
 # 5. boto3 setup — AgentCore Gateway + 2 GatewayTarget (educational, step-by-step)
 uv run python infra/cognito-gateway/setup_gateway.py    # GATEWAY_ID + GATEWAY_URL 출력
@@ -635,8 +635,8 @@ DEPLOY_BUCKET="aiops-demo-${DEMO_USER}-deploy-${ACCOUNT_ID}-${REGION}"
 uv run python infra/cognito-gateway/cleanup_gateway.py || true   # idempotent: 이미 삭제됐으면 skip
 
 # 2. CFN stack 삭제 (cognito.yaml — UserPool + Lambda + IAM Role 통합)
-aws cloudformation delete-stack --region "$REGION" --stack-name "aiops-demo-${DEMO_USER}-phase2-cognito" || true
-aws cloudformation wait stack-delete-complete --region "$REGION" --stack-name "aiops-demo-${DEMO_USER}-phase2-cognito" 2>/dev/null || true
+aws cloudformation delete-stack --region "$REGION" --stack-name "aiops-demo-${DEMO_USER}-cognito-gateway" || true
+aws cloudformation wait stack-delete-complete --region "$REGION" --stack-name "aiops-demo-${DEMO_USER}-cognito-gateway" 2>/dev/null || true
 
 # 3. DEPLOY_BUCKET 비우기 + 삭제 (deploy step 0 와 대칭)
 if aws s3api head-bucket --bucket "$DEPLOY_BUCKET" 2>/dev/null; then
@@ -646,7 +646,7 @@ fi
 
 # 3. .env 갱신 — Phase 2 변수 비움
 sed -i 's|^COGNITO_USER_POOL_ID=.*|COGNITO_USER_POOL_ID=|' "$PROJECT_ROOT/.env"
-# ... (COGNITO_DOMAIN, COGNITO_CLIENT_C_ID/SECRET, GATEWAY_ID, GATEWAY_URL, LAMBDA_*_ARN)
+# ... (COGNITO_DOMAIN, COGNITO_CLIENT_ID/SECRET, GATEWAY_ID, GATEWAY_URL, LAMBDA_*_ARN)
 ```
 
 > Phase 4/5/6 와 동시 진행 시 Phase 2 teardown 만 단독 호출하면 다른 phase 의 deploy 가 깨질 수 있음. 일반 demo 흐름 (Phase 2 단독 cleanup) 에선 무관. 향후 phase 간 의존이 생기면 `infra/teardown.sh` (전 phase 통합) 추가 검토.
@@ -824,8 +824,8 @@ def get_gateway_access_token() -> str:
 
     domain = os.environ["COGNITO_DOMAIN"]
     region = os.environ.get("AWS_REGION", "us-west-2")
-    client_id = os.environ["COGNITO_CLIENT_C_ID"]
-    client_secret = os.environ["COGNITO_CLIENT_C_SECRET"]
+    client_id = os.environ["COGNITO_CLIENT_ID"]
+    client_secret = os.environ["COGNITO_CLIENT_SECRET"]
     scope = os.environ["COGNITO_GATEWAY_SCOPE"]   # e.g. "aiops-demo-ubuntu-resource-server/invoke"
 
     resp = requests.post(
@@ -1145,7 +1145,7 @@ infra/cognito-gateway/
 ├── README.md                                # entry doc — 구성 / 배포 / 검증 / 정리 4섹션 (Phase 0 패턴, implementation 완료 후 작성)
 ├── deploy.sh                                # 진입점 — DEPLOY_BUCKET 보장 → vendor data/mock → cfn package → cfn deploy(cognito.yaml) → setup_gateway.py → .env 갱신
 ├── teardown.sh                              # cleanup_gateway.py → cfn stack 삭제 → DEPLOY_BUCKET 비우기 + 삭제 + .env 비움
-├── cognito.yaml                             # CFN: UserPool + Domain + ResourceServer + Client C + 2 Lambda + Lambda execution roles + Gateway IAM Role
+├── cognito.yaml                             # CFN: UserPool + Domain + ResourceServer + Client + 2 Lambda + Lambda execution roles + Gateway IAM Role
 ├── setup_gateway.py                         # boto3 step-by-step (Gateway + 2 GatewayTarget) — ec-customer-support 패턴, educational
 ├── cleanup_gateway.py                       # boto3 (delete_gateway_target × 2 + delete_gateway) — teardown 대칭
 └── lambda/
@@ -1254,8 +1254,8 @@ def test_run_mode_past_via_gateway():
 # === Phase 2: Cognito ===
 COGNITO_USER_POOL_ID=
 COGNITO_DOMAIN=                    # 예: aiops-demo-ubuntu (region.amazoncognito.com 앞 prefix)
-COGNITO_CLIENT_C_ID=
-COGNITO_CLIENT_C_SECRET=           # deploy.sh 가 describe-user-pool-client 로 별도 조회
+COGNITO_CLIENT_ID=
+COGNITO_CLIENT_SECRET=           # deploy.sh 가 describe-user-pool-client 로 별도 조회
 COGNITO_GATEWAY_SCOPE=             # 형식: aiops-demo-${DEMO_USER}-resource-server/invoke (deploy.sh 자동 채움)
 
 # === Phase 2: Gateway ===
@@ -1297,7 +1297,7 @@ LAMBDA_CLOUDWATCH_WRAPPER_ARN=     # 디버깅용
 | **Cognito** | UserPool | 1 |
 | Cognito | UserPoolDomain | 1 |
 | Cognito | ResourceServer | 1 |
-| Cognito | UserPoolClient (Client C) | 1 |
+| Cognito | UserPoolClient (Client) | 1 |
 | **IAM** | Gateway execution role | 1 |
 | **S3** | DEPLOY_BUCKET (`aiops-demo-${DEMO_USER}-deploy-${ACCOUNT}-${REGION}`) | 1 (phase-shared) |
 | **CloudFormation** | Stack | 1 (cognito.yaml — UserPool + Lambda + IAM Role 통합) |
@@ -1482,7 +1482,7 @@ bash infra/ec2-simulator/teardown.sh
 
 | 차용 파일 (A2A) | 적용 대상 (phase2) | 변형 |
 |---|---|---|
-| `cloudformation/cognito.yaml:28-156` (UserPool + Domain + ResourceServer + UserPoolClient M2M) | `infra/cognito-gateway/cognito.yaml` 의 Cognito 자원 (Section 3-2) | Multi-user prefix (`aiops-demo-${DEMO_USER}-*`) 추가. Phase 2 = Client C 만 |
+| `cloudformation/cognito.yaml:28-156` (UserPool + Domain + ResourceServer + UserPoolClient M2M) | `infra/cognito-gateway/cognito.yaml` 의 Cognito 자원 (Section 3-2) | Multi-user prefix (`aiops-demo-${DEMO_USER}-*`) 추가. Phase 2 = Client 만 |
 | `cognito.yaml` 의 `ResourceServer Identifier = ${StackName}-resource-server` 패턴 | `aiops-demo-${DEMO_USER}-resource-server` (Section 3-2) | 동일 |
 | `monitoring_strands_agent/utils.py:27-48` `create_gateway_client(workload_token)` MCPClient 생성 | **Phase 3** Runtime `mcp_client.py` (참고만) | Phase 2 는 transitional helper (Cognito POST). Phase 3 transition 시 이 패턴 재구현 (`agentcore_client.get_resource_oauth2_token(...)`) |
 | A2A 의 Lambda Custom Resource (OAuth2CredentialProvider 생성 패턴) | **deprecated** | Phase 3 패턴 결정은 Phase 3 design 시점에 (premature 회피) |

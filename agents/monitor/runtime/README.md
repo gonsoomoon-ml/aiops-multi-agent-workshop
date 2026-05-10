@@ -7,7 +7,7 @@ Phase 2 의 local Monitor agent (`agents/monitor/local/run.py`) 를 AgentCore Ru
 ## 사전 조건
 
 - Phase 2 완료 — `infra/cognito-gateway/deploy.sh` 통과 + repo root `.env` 채워진 상태:
-  - `COGNITO_USER_POOL_ID`, `COGNITO_DOMAIN`, `COGNITO_CLIENT_C_ID`, `COGNITO_CLIENT_C_SECRET`
+  - `COGNITO_USER_POOL_ID`, `COGNITO_DOMAIN`, `COGNITO_CLIENT_ID`, `COGNITO_CLIENT_SECRET`
   - `GATEWAY_URL` (Phase 2 `setup_gateway.py` 가 boto3 로 채움)
 - `aws configure` (또는 `AWS_PROFILE`) — Runtime workload identity 발급에 필요
 - Docker daemon 실행 중 (toolkit `Runtime.launch()` 가 `docker buildx` 호출)

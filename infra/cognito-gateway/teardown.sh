@@ -19,7 +19,7 @@ DEMO_USER="${DEMO_USER:-${USER:-ubuntu}}"
 ACCOUNT_ID="$(aws sts get-caller-identity --query Account --output text 2>/dev/null || echo '')"
 [[ -n "$ACCOUNT_ID" ]] || { warn "AWS 자격증명 미설정"; exit 1; }
 
-STACK="aiops-demo-${DEMO_USER}-phase2-cognito"
+STACK="aiops-demo-${DEMO_USER}-cognito-gateway"
 DEPLOY_BUCKET="aiops-demo-${DEMO_USER}-deploy-${ACCOUNT_ID}-${REGION}"
 
 log "region=$REGION demo_user=$DEMO_USER stack=$STACK"
@@ -49,7 +49,7 @@ rm -f "$PROJECT_ROOT/infra/cognito-gateway/cognito.packaged.yaml"
 
 # ── 5. .env Phase 2 변수 비우기 ─────────────────
 log ".env Phase 2 변수 비우기"
-for key in COGNITO_USER_POOL_ID COGNITO_DOMAIN COGNITO_CLIENT_C_ID COGNITO_CLIENT_C_SECRET \
+for key in COGNITO_USER_POOL_ID COGNITO_DOMAIN COGNITO_CLIENT_ID COGNITO_CLIENT_SECRET \
            COGNITO_GATEWAY_SCOPE GATEWAY_ID GATEWAY_URL \
            LAMBDA_HISTORY_MOCK_ARN LAMBDA_CLOUDWATCH_WRAPPER_ARN; do
     sed -i "s|^${key}=.*|${key}=|" "$PROJECT_ROOT/.env" 2>/dev/null || true

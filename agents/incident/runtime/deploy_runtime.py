@@ -5,7 +5,7 @@ deploy_runtime.py — Phase 4 Incident Agent AgentCore Runtime 배포
 Phase 3 monitor `deploy_runtime.py` 와 동일 5-step 흐름. 차이점:
   - agent_name = ``aiops_demo_${DEMO_USER}_incident``
   - Build context 에 monitor/shared + incident/shared 모두 copy (phase4.md §3-6 Option A)
-  - IAM inline policy 이름: ``Phase4IncidentRuntimeExtras``
+  - IAM inline policy 이름: ``IncidentRuntimeExtras``
 
 사용법:
     uv run agents/incident/runtime/deploy_runtime.py
@@ -20,7 +20,7 @@ Phase 3 monitor `deploy_runtime.py` 와 동일 5-step 흐름. 차이점:
     1. monitor/shared + incident/shared 를 빌드 컨텍스트로 복사
     2. Runtime.configure (Dockerfile / ECR / IAM Role 자동)
     3. Runtime.launch (Docker 빌드 → ECR push → Runtime 생성)
-    4. IAM ``Phase4IncidentRuntimeExtras`` + OAuth2CredentialProvider 부착
+    4. IAM ``IncidentRuntimeExtras`` + OAuth2CredentialProvider 부착
     5. READY 대기 + runtime/.env 저장
 
 reference:
@@ -134,6 +134,7 @@ def launch_runtime(runtime):
         "OTEL_RESOURCE_ATTRIBUTES": f"service.name={AGENT_NAME}",
         "AGENT_OBSERVABILITY_ENABLED": "true",
         "DEMO_USER": DEMO_USER,
+        "STORAGE_BACKEND": os.environ.get("STORAGE_BACKEND", "s3"),  # s3 / github
     }
 
     start_time = datetime.now()
@@ -150,8 +151,8 @@ def launch_runtime(runtime):
 def attach_extras_and_oauth_provider(launch_result) -> None:
     """[4/5] Phase 4 IAM inline policy + OAuth2CredentialProvider 부착.
 
-    - IAM ``Phase4IncidentRuntimeExtras``: GetResourceOauth2Token + Cognito secret read
-    - OAuth2CredentialProvider: Phase 3 와 동일 패턴 — Cognito Client C M2M.
+    - IAM ``IncidentRuntimeExtras``: GetResourceOauth2Token + Cognito secret read
+    - OAuth2CredentialProvider: Phase 3 와 동일 패턴 — Cognito Client M2M.
     """
     print(f"{YELLOW}[4/5] IAM 추가 권한 + OAuth2CredentialProvider 생성 중...{NC}")
 
@@ -183,10 +184,10 @@ def attach_extras_and_oauth_provider(launch_result) -> None:
     }
     iam.put_role_policy(
         RoleName=role_name,
-        PolicyName="Phase4IncidentRuntimeExtras",
+        PolicyName="IncidentRuntimeExtras",
         PolicyDocument=json.dumps(extras_policy),
     )
-    print(f"{GREEN}✅ IAM inline policy 부착: {role_name}/Phase4IncidentRuntimeExtras{NC}")
+    print(f"{GREEN}✅ IAM inline policy 부착: {role_name}/IncidentRuntimeExtras{NC}")
 
     user_pool_id = os.environ["COGNITO_USER_POOL_ID"]
     domain = os.environ["COGNITO_DOMAIN"]
@@ -196,8 +197,8 @@ def attach_extras_and_oauth_provider(launch_result) -> None:
             credentialProviderVendor="CustomOauth2",
             oauth2ProviderConfigInput={
                 "customOauth2ProviderConfig": {
-                    "clientId": os.environ["COGNITO_CLIENT_C_ID"],
-                    "clientSecret": os.environ["COGNITO_CLIENT_C_SECRET"],
+                    "clientId": os.environ["COGNITO_CLIENT_ID"],
+                    "clientSecret": os.environ["COGNITO_CLIENT_SECRET"],
                     "oauthDiscovery": {
                         "authorizationServerMetadata": {
                             "issuer": f"https://cognito-idp.{REGION}.amazonaws.com/{user_pool_id}",

@@ -4,7 +4,7 @@
 
 > Phase 4 (`docs/design/phase4.md`) 가 multi-agent 진입을 sequential CLI 로 시연한 후, 이 단계에서 **Supervisor Runtime + Change Agent Runtime + A2A 프로토콜 (server + caller 양쪽)** + **Cognito Client A/B** + **deployments-storage Lambda** 를 추가한다.
 > Phase 5 (AgentCore NL Policy) 는 본 프로젝트 scope 에서 **건너뜀** — Phase 4 → Phase 6a 직행. Phase 5 결정에 묶여있던 항목 (incidents/ log, AgentCore Memory) 은 §1 에서 재배치.
-> Phase 0/2/3/4 자원 (Cognito UserPool, Client C, Gateway, 3 Target, Lambda × 3, Monitor + Incident Runtime) 은 **무변경** — Phase 6a PR 영향 범위 격리, 회귀 0건 목표.
+> Phase 0/2/3/4 자원 (Cognito UserPool, Client, Gateway, 3 Target, Lambda × 3, Monitor + Incident Runtime) 은 **무변경** — Phase 6a PR 영향 범위 격리, 회귀 0건 목표.
 
 > **A2A 개념 사전 학습**: 본 phase 는 A2A 프로토콜을 처음 활성화한다. A2A 가 무엇이고 어떻게 동작하는지에 대한 직관적 설명은 `docs/research/a2a_intro.md` 참고. 본 design 은 그 기반 위에서 구체적 구현 결정을 다룬다.
 >
@@ -12,7 +12,7 @@
 >
 > **Preservation rule (2026-05-09)**: workshop instructor 가 Phase 4 (HTTP, 작동) 와 Phase 6a (A2A, 신규) 를 **side-by-side** 비교 가능하도록 `agents/monitor/`, `agents/incident/` 등 이전 phase 코드는 **수정 금지**. Phase 6a 의 Monitor/Incident A2A 변형은 신규 디렉토리 `agents/monitor_a2a/` + `agents/incident_a2a/` 에 작성 (originally §2-4 의 in-place 수정 계획을 폐기). 변경 사항: §2-3 에 두 디렉토리 추가, §2-4 의 monitor/incident 수정 행 제거, Step F 가 retrofit 이 아닌 신규 작성으로 정의 변경.
 >
-> **Option X (2026-05-09 review)**: 사용자 결정 — **새 Cognito 자원 추가 0**. Phase 2 의 Client C 만 재사용 (sub-agent A2A inbound + Supervisor outbound 모두). Operator CLI 는 Phase 4 패턴 SigV4 IAM 그대로. AgentCore `customJWTAuthorizer.allowedClients` 가 토큰의 `aud` (= client_id) 만 검증, scope 미검증 → Gateway scope 토큰이 multiple audience 에 통과. 영향: D3, D4 폐기 (Cognito Client A/B 제거); §6 단순화 (`cognito_extras.yaml` 삭제); §8 단순화 (Operator CLI 가 boto3 SigV4); §2-1 인벤토리 -7 자원 (Cognito Client A + B + ResourceServer + OperatorUser + 2 OAuth provider variant). 약 -325 LoC 단순화.
+> **Option X (2026-05-09 review)**: 사용자 결정 — **새 Cognito 자원 추가 0**. Phase 2 의 Client 만 재사용 (sub-agent A2A inbound + Supervisor outbound 모두). Operator CLI 는 Phase 4 패턴 SigV4 IAM 그대로. AgentCore `customJWTAuthorizer.allowedClients` 가 토큰의 `aud` (= client_id) 만 검증, scope 미검증 → Gateway scope 토큰이 multiple audience 에 통과. 영향: D3, D4 폐기 (Cognito Client A/B 제거); §6 단순화 (`cognito_extras.yaml` 삭제); §8 단순화 (Operator CLI 가 boto3 SigV4); §2-1 인벤토리 -7 자원 (Cognito Client A + B + ResourceServer + OperatorUser + 2 OAuth provider variant). 약 -325 LoC 단순화.
 >
 > **Change Agent 연기 (2026-05-09 review)**: 사용자 결정 — Change Agent (D6) 는 **후속 phase 로 연기**. Phase 6a 는 *A2A activation* 한 가지 핵심 메시지에 집중. 영향: D5/D6 폐기 (deployments-storage Lambda + Target 삭제); §4 (Change Agent), §7 (deployments-storage Lambda) 무효화; sub-agent 3 → 2 (monitor_a2a + incident_a2a 만); `agents/change/`, `infra/phase6a/`, `deployments/`, `incidents/` 4 디렉토리 삭제; Phase 6a 의 infra/ stack 0 (Phase 0/2/3/4 자원만 사용). 약 -1100 LoC 추가 단순화. Change + write tool + per-agent 모델 분리는 Phase 6b (또는 별 phase) 단독 주제로 배치.
 >
@@ -70,7 +70,7 @@
 
 → Phase 6a PR 영향 범위 = `agents/{supervisor,change,operator}/` 신규 + `infra/phase6a/{cognito_extras,deployments_lambda}.yaml` 신규 + Monitor/Incident `agentcore_runtime.py` 에 A2A server wrap 추가 + 두 Runtime 재배포 (코드 변경분 반영) + `data/runbooks/` 또는 `deployments/` 컨텐츠 minimal seed.
 
-**Cognito UserPool / Client C / Resource Server / Gateway / 기존 3 Target / Lambda × 3 / IAM Roles 모두 미터치.** 신규 Cognito Client A/B 는 별 CFN stack (`aiops-demo-${user}-phase6a-cognito-extras`) 으로 격리.
+**Cognito UserPool / Client / Resource Server / Gateway / 기존 3 Target / Lambda × 3 / IAM Roles 모두 미터치.** 신규 Cognito Client A/B 는 별 CFN stack (`aiops-demo-${user}-phase6a-cognito-extras`) 으로 격리.
 
 ---
 
@@ -80,8 +80,8 @@
 
 1. **Strands `sub_agents` 패턴** — Supervisor 가 `RemoteA2aAgent(url=..., bearer_token=...)` 인스턴스 3개를 보유. LLM 이 routing 결정. Phase 4 의 "CLI 가 caller" 패턴이 LLM-driven 으로 진화.
 2. **A2A 프로토콜 server wrap** — 기존 `@app.entrypoint` 본문은 carry-over, `A2AStarletteApplication` 으로 둘러싸기만 함. AgentCard schema 노출. Bearer JWT 검증 via AgentCore Inbound Authorizer (Cognito UserPool 으로 직접) 또는 Starlette middleware.
-3. **Cognito 의 다중 클라이언트 분리** — Client C (Gateway M2M, Phase 2 에서 정착) + Client A (operator, Authorization Code 또는 USER_PASSWORD) + Client B (M2M, A2A scope) 의 책임 분리. 동일 UserPool 안에서 audience 다른 JWT.
-4. **OAuth2CredentialProvider 의 multi-provider 패턴** — Supervisor Runtime 에 두 provider: (a) `gateway_provider` (Client C, Gateway 호출용), (b) `a2a_provider` (Client B, sub-agents 호출용). Phase 3 OAuth gotcha 가 multi-provider 로 자연 확장.
+3. **Cognito 의 다중 클라이언트 분리** — Client (Gateway M2M, Phase 2 에서 정착) + Client A (operator, Authorization Code 또는 USER_PASSWORD) + Client B (M2M, A2A scope) 의 책임 분리. 동일 UserPool 안에서 audience 다른 JWT.
+4. **OAuth2CredentialProvider 의 multi-provider 패턴** — Supervisor Runtime 에 두 provider: (a) `gateway_provider` (Client, Gateway 호출용), (b) `a2a_provider` (Client B, sub-agents 호출용). Phase 3 OAuth gotcha 가 multi-provider 로 자연 확장.
 5. **Multi-agent topology 가 코드와 어떻게 1:1 매핑되는지** — plan_summary 의 "스타 토폴로지" 다이어그램 이 Supervisor 의 `sub_agents=[monitor, incident, change]` list 한 줄로 코드화.
 6. **Phase 4 → 6a 진화의 line-level 비교** — Phase 4 sequential CLI 가 *implemented if it had been built* 었다면 ~50 LoC. Supervisor 의 `sub_agents` + LLM routing 은 ~30 LoC + system prompt. 같은 시연을 LLM 위임으로 해결하는 패턴.
 
@@ -114,8 +114,8 @@ phase4.md §1 의 의사결정 로그 패턴 따라.
 |---|---|---|---|---|
 | **D1** | Supervisor 호출 대상 | **Monitor + Incident + Change 3개 모두** | (b) Change 만 / (c) Monitor + Incident (Change 제외) | plan_summary 의 "스타 토폴로지" 명시 + workshop educational 가치는 LLM 의 routing 결정 시연 (sub-agent 1개면 routing 의미 없음). user 결정 |
 | **D2** | A2A 프로토콜 활성화 범위 | **server (Monitor/Incident/Change 3개) + caller (Supervisor)** | (b) caller 만 (sub-agents 는 SIGV4 그대로) / (c) server 만 (CLI 가 A2A 호출) | resource.md §1 의 "Phase 6a Supervisor 변환 시 핵심 참조" 약속 + Phase 4 D2 ("server-only 는 dead code") 의 정합. Supervisor 가 등장하는 시점 = caller 출현 시점 = server 도 의미 있는 시점 |
-| **D3** | Cognito Client A (operator → Supervisor) | **신규 발급 — UserPasswordAuth grant + 워크샵 prefix user** | (b) Authorization Code with PKCE / (c) Client C 재사용 | 워크샵 단순성 — operator CLI 가 username/password 로 1줄 prompt 후 JWT 획득. PKCE 는 browser 흐름 → CLI 불편. Client C 재사용 시 audience/scope 충돌 (Gateway 용) |
-| **D4** | Cognito Client B (Supervisor M2M → sub-agents) | **신규 발급 — client_credentials grant + 신규 scope `agent-invoke`** | (b) Client C 재사용 (Gateway scope `/invoke` 도 부여) / (c) Client A 재사용 | Client C 의 scope `aiops-demo-${user}-resource-server/invoke` 는 Gateway 전용 — sub-agent A2A audience 와 분리 필요. 신규 scope `agent-invoke` 로 audience 격리 → 권한 누출 방지. Client A 는 user-bound 토큰이라 M2M 부적합 |
+| **D3** | Cognito Client A (operator → Supervisor) | **신규 발급 — UserPasswordAuth grant + 워크샵 prefix user** | (b) Authorization Code with PKCE / (c) Client 재사용 | 워크샵 단순성 — operator CLI 가 username/password 로 1줄 prompt 후 JWT 획득. PKCE 는 browser 흐름 → CLI 불편. Client 재사용 시 audience/scope 충돌 (Gateway 용) |
+| **D4** | Cognito Client B (Supervisor M2M → sub-agents) | **신규 발급 — client_credentials grant + 신규 scope `agent-invoke`** | (b) Client 재사용 (Gateway scope `/invoke` 도 부여) / (c) Client A 재사용 | Client 의 scope `aiops-demo-${user}-resource-server/invoke` 는 Gateway 전용 — sub-agent A2A audience 와 분리 필요. 신규 scope `agent-invoke` 로 audience 격리 → 권한 누출 방지. Client A 는 user-bound 토큰이라 M2M 부적합 |
 | **D5** | deployments storage 분리 | **신규 Lambda + 신규 Gateway Target** | (b) github-storage Lambda 에 `get_deployments_log` tool 추가 / (c) S3 직접 read | user 결정 ("keep original"). plan_summary 의 architecture diagram 도 GitHub Target 1개 (`rules/ data/runbooks/ deployments/`) 통합 묘사이지만, **권한 분리 + Change Agent 의 caller 격리** + 향후 write 권한 확장 여지 (D6) 를 위해 분리. educational scope memory 는 plumbing 추상화 — 그러나 **agent 별 도구 분리**는 plumbing 이 아니라 architecture decision 영역 |
 | **D6** | Change Agent 권한 범위 | **read deployments + write incidents/ + 적절한 추가 write (full where appropriate)** | (b) read-only / (c) read + 명시적 1 tool write | user 결정. workshop 청중에게 "Agent 가 read-only 가 아니라 write 도 할 수 있다" 는 educational 가치 + Change Agent 의 본질 (변경 추적/롤백 결정) 이 read-only 로는 불완전 |
 | **D7** | Phase 4 sequential CLI 처리 | **본 design 에서 다루지 않음** — Step D 가 미구현이므로 deprecate 할 코드 없음. Supervisor 가 단일 multi-agent 경로 | (b) sequential CLI 별도 유지 (educational 비교용) / (c) `--legacy-sequential` 옵션 | user 결정. 기존 코드 부재 + Supervisor 가 LLM-driven 으로 routing 시연 → CLI hardcoded routing 과 비교 가치는 design doc §0-4 의 "진화 line-level 비교" 로 충분 |
@@ -166,12 +166,12 @@ D10 (Memory 보류)                  — Phase 7+ 재이월
 |---|---|---|---|---|
 | 1 | Bedrock AgentCore Runtime | `aiops_demo_${DEMO_USER}_supervisor` | 1 | `agents/supervisor/runtime/deploy_runtime.py` |
 | 2 | Bedrock AgentCore Runtime | `aiops_demo_${DEMO_USER}_change` | 1 | `agents/change/runtime/deploy_runtime.py` |
-| 3 | OAuth2CredentialProvider | `aiops_demo_${DEMO_USER}_supervisor_gateway_provider` | 1 | Supervisor deploy (boto3) — Client C M2M, Gateway 호출용 |
+| 3 | OAuth2CredentialProvider | `aiops_demo_${DEMO_USER}_supervisor_gateway_provider` | 1 | Supervisor deploy (boto3) — Client M2M, Gateway 호출용 |
 | 4 | OAuth2CredentialProvider | `aiops_demo_${DEMO_USER}_supervisor_a2a_provider` | 1 | Supervisor deploy — **Client B M2M, sub-agents A2A 호출용** |
-| 5 | OAuth2CredentialProvider | `aiops_demo_${DEMO_USER}_change_gateway_provider` | 1 | Change deploy — Client C M2M, Gateway 호출용 |
+| 5 | OAuth2CredentialProvider | `aiops_demo_${DEMO_USER}_change_gateway_provider` | 1 | Change deploy — Client M2M, Gateway 호출용 |
 | 6 | IAM Role (Supervisor Runtime) | `AmazonBedrockAgentCoreSDKRuntime-...-aiops_demo_${user}_supervisor-...` | 1 | toolkit 자동 |
 | 7 | IAM Role (Change Runtime) | `AmazonBedrockAgentCoreSDKRuntime-...-aiops_demo_${user}_change-...` | 1 | toolkit 자동 |
-| 8 | IAM inline policy | `Phase6aSupervisorRuntimeExtras` | 1 | Supervisor deploy — 두 OAuth provider 의 GetResourceOauth2Token + Cognito secret read |
+| 8 | IAM inline policy | `SupervisorRuntimeExtras` | 1 | Supervisor deploy — 두 OAuth provider 의 GetResourceOauth2Token + Cognito secret read |
 | 9 | IAM inline policy | `Phase6aChangeRuntimeExtras` | 1 | Change deploy |
 | 10 | Cognito UserPoolClient (A) | `aiops-demo-${DEMO_USER}-client-a` | 1 | `infra/phase6a/cognito_extras.yaml` (CFN) |
 | 11 | Cognito UserPoolClient (B) | `aiops-demo-${DEMO_USER}-client-b` | 1 | 동일 CFN |
@@ -189,11 +189,11 @@ D10 (Memory 보류)                  — Phase 7+ 재이월
 
 | 자원 | 상태 |
 |---|---|
-| Cognito UserPool + Client C + Resource Server (기존 scope `/invoke`) | **그대로** |
+| Cognito UserPool + Client + Resource Server (기존 scope `/invoke`) | **그대로** |
 | Gateway (`aiops-demo-${user}-gateway-...`) | **그대로** |
 | Gateway Target × 3 (history-mock, cloudwatch-wrapper, github-storage) | **그대로** |
 | Lambda × 3 (history-mock, cloudwatch-wrapper, github-storage) | **그대로** |
-| Phase 2 IAM Role `aiops-demo-${user}-phase2-gateway-role` | **그대로** (Phase 4 가 inline policy 추가, Phase 6a 가 또 1건 추가 — D5) |
+| Phase 2 IAM Role `aiops-demo-${user}-gateway-role` | **그대로** (Phase 4 가 inline policy 추가, Phase 6a 가 또 1건 추가 — D5) |
 | Monitor Runtime (`aiops_demo_${user}_monitor`) | **본문 미터치, A2A wrap 추가 → 재배포** (코드 변경분 반영) |
 | Incident Runtime (`aiops_demo_${user}_incident`) | **본문 미터치, A2A wrap 추가 → 재배포** (코드 변경분 반영) |
 | Phase 3 Monitor OAuth provider | **그대로** |
@@ -503,12 +503,12 @@ async def supervisor(payload: dict, context: Any) -> AsyncGenerator[dict, None]:
 
 ### 3-4. caller-side OAuth provider 별도 발급 이유 (D4 부연)
 
-Phase 3 의 단일 provider (`gateway_provider`) 는 Client C (Gateway 호출용 audience). A2A 호출용 token 은 sub-agent Runtime 의 `allowedClients` 에 매칭되어야 하므로 **Client B (별 audience)** 로 발급된 토큰이 필요. 같은 Cognito UserPool 안에서 Client 만 추가하면 충분 — 별 UserPool 신설 불필요.
+Phase 3 의 단일 provider (`gateway_provider`) 는 Client (Gateway 호출용 audience). A2A 호출용 token 은 sub-agent Runtime 의 `allowedClients` 에 매칭되어야 하므로 **Client B (별 audience)** 로 발급된 토큰이 필요. 같은 Cognito UserPool 안에서 Client 만 추가하면 충분 — 별 UserPool 신설 불필요.
 
 **Audience 격리가 본질, scope 는 hygiene** (research 확인 + §6-2):
-- AgentCore 의 권한 결정은 `aud` 매칭만 — Client C 토큰의 `aud` 는 Client C, Client B 토큰의 `aud` 는 Client B
+- AgentCore 의 권한 결정은 `aud` 매칭만 — Client 토큰의 `aud` 는 Client, Client B 토큰의 `aud` 는 Client B
 - 따라서 Supervisor Runtime 에 두 OAuth provider:
-  - `gateway_provider` (Client C credentials) → Gateway 의 `allowedClients=[C]` 통과
+  - `gateway_provider` (Client credentials) → Gateway 의 `allowedClients=[C]` 통과
   - `a2a_provider` (Client B credentials) → sub-agent Runtime 의 `allowedClients=[B]` 통과
 - scope 는 Cognito 측에서 발급 정책 분리 + 감사 가시성 제공 — AgentCore 의 권한 결정에는 무관
 
@@ -978,7 +978,7 @@ if __name__ == "__main__":
 | **P6a-A3** | A2A 호출 검증 (server 측 trace) | sub-agent CloudWatch 로그에 Bearer JWT 검증 + caller=Supervisor 흔적. Inbound Authorizer rejection (잘못된 token) → 401 |
 | **P6a-A4** | Change Agent deployments read | Supervisor 응답의 `changes.deployments` 가 `2026-05-08.log` content 포함 |
 | **P6a-A5** | Change Agent incidents/ write | Supervisor 호출 후 GitHub repo 의 `incidents/<date>.log` 가 신규 파일 또는 append 됨 |
-| **P6a-A6** | Phase 6a teardown 후 Phase 0/2/3/4 자원 보존 | `infra/phase6a/teardown.sh` + Supervisor/Change `teardown.sh` 후 — Monitor + Incident Runtime / Cognito UserPool / Client C / Gateway / 기존 3 Lambda + 3 Target 모두 그대로. Phase 2 Gateway Role 의 phase4 inline policy 도 보존 (phase6a 만 detach) |
+| **P6a-A6** | Phase 6a teardown 후 Phase 0/2/3/4 자원 보존 | `infra/phase6a/teardown.sh` + Supervisor/Change `teardown.sh` 후 — Monitor + Incident Runtime / Cognito UserPool / Client / Gateway / 기존 3 Lambda + 3 Target 모두 그대로. Phase 2 Gateway Role 의 phase4 inline policy 도 보존 (phase6a 만 detach) |
 
 ### 9-2. smoke test 절차 (요약)
 

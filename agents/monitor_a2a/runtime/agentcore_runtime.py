@@ -24,7 +24,7 @@ Phase 4 monitor/shared/ 직접 재사용 (Option G — 2026-05-09):
 
 사전 조건 (Runtime 환경변수):
     - GATEWAY_URL: Phase 2 Gateway endpoint
-    - OAUTH_PROVIDER_NAME: Monitor A2A OAuth provider 이름 (Gateway 호출용 Client C M2M)
+    - OAUTH_PROVIDER_NAME: Monitor A2A OAuth provider 이름 (Gateway 호출용 Client M2M)
     - COGNITO_GATEWAY_SCOPE: Cognito Resource Server scope
     - MONITOR_MODEL_ID: Bedrock model ID
     - DEMO_USER: live mode query 의 ``payment-{user}-*`` prefix 채움
@@ -85,7 +85,7 @@ TARGET_PREFIX, PROMPT_FILENAME = MODE_CONFIG[MODE]
     into="access_token",
 )
 async def _fetch_gateway_token(*, access_token: str = "") -> str:
-    """Gateway 호출용 token (Client C M2M).
+    """Gateway 호출용 token (Client M2M).
 
     `requires_access_token` 데코레이터가 `BedrockAgentCoreContext.get_workload_access_token()`
     에서 workload-token 읽어 Cognito M2M 교환 — 이 ContextVar 는 `serve_a2a` 의

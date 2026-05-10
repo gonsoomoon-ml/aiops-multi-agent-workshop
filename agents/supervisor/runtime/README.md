@@ -40,22 +40,22 @@ agent = create_supervisor_agent(
 
 LLM 이 system_prompt 의 routing 정책 따라 어떤 tool 을 부를지 결정. tool 안에서 A2A hop 발생.
 
-## Auth (Option X — Phase 2 Client C 재사용)
+## Auth (Option X — Phase 2 Client 재사용)
 
 | 방향 | 검증 | OAuth provider | scope/audience |
 |---|---|---|---|
 | inbound (Operator → Supervisor) | **SigV4 IAM** (no customJWTAuthorizer) | (해당 없음) | 사용자 IAM Role 의 `bedrock-agentcore:InvokeAgentRuntime` |
-| outbound (Supervisor → 2 sub-agent) | 각 sub-agent 의 customJWTAuthorizer | `requires_access_token(provider_name=OAUTH_PROVIDER_NAME, auth_flow="M2M")` | **Client C** M2M 토큰의 `aud` ↔ sub-agent 의 `allowedClients=[Client C]` (Phase 2 재사용) |
+| outbound (Supervisor → 2 sub-agent) | 각 sub-agent 의 customJWTAuthorizer | `requires_access_token(provider_name=OAUTH_PROVIDER_NAME, auth_flow="M2M")` | **Client** M2M 토큰의 `aud` ↔ sub-agent 의 `allowedClients=[Client]` (Phase 2 재사용) |
 
-**핵심 통찰**: AgentCore `customJWTAuthorizer.allowedClients` 는 `aud` (= client_id) 만 검증, scope 미검증. Phase 2 의 Client C 토큰 (Gateway scope) 이 sub-agent A2A inbound 에도 통과 — 새 Cognito Client 추가 0.
+**핵심 통찰**: AgentCore `customJWTAuthorizer.allowedClients` 는 `aud` (= client_id) 만 검증, scope 미검증. Phase 2 의 Client 토큰 (Gateway scope) 이 sub-agent A2A inbound 에도 통과 — 새 Cognito Client 추가 0.
 
 ## 사전 조건
 
-1. **Phase 0/2/3/4 deploy 완료** — Phase 2 산출물 `COGNITO_CLIENT_C_ID/SECRET` 가 `.env` 에 존재
+1. **Phase 0/2/3/4 deploy 완료** — Phase 2 산출물 `COGNITO_CLIENT_ID/SECRET` 가 `.env` 에 존재
 2. **monitor_a2a + incident_a2a Runtime deploy 완료** — 각 `runtime/.env` 에 ARN 작성됨
 3. **repo `.env`** 에 (Phase 2 산출물):
    - `COGNITO_USER_POOL_ID`, `COGNITO_DOMAIN`
-   - `COGNITO_CLIENT_C_ID`, `COGNITO_CLIENT_C_SECRET`
+   - `COGNITO_CLIENT_ID`, `COGNITO_CLIENT_SECRET`
    - `COGNITO_GATEWAY_SCOPE`
 4. (Phase 6a Option X — 새 Cognito 자원 추가 0)
 
@@ -70,7 +70,7 @@ uv run agents/supervisor/runtime/deploy_runtime.py
 2. sub-agent ARN cross-load (2개의 runtime/.env — monitor_a2a + incident_a2a)
 3. `Runtime.configure(protocol="HTTP")` — authorizer 미설정 = SigV4 IAM default
 4. `Runtime.launch` — Docker → ECR → Runtime
-5. IAM `Phase6aSupervisorRuntimeExtras` + OAuth provider (Phase 2 Client C 재사용)
+5. IAM `SupervisorRuntimeExtras` + OAuth provider (Phase 2 Client 재사용)
 6. READY 대기 + `runtime/.env` 저장
 
 ## 호출
