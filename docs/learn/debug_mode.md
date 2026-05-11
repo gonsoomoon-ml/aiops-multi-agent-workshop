@@ -8,14 +8,17 @@
 
 Phase 2+ 의 monitor agent 코드 (`agents/monitor/local/run.py`, `agents/monitor/shared/*`) 에 분산된 debug 출력을 단일 toggle (env `DEBUG=1`) 로 켜고 끔. 켜지면 다음 4 카테고리 trace 가 한 화면에 흐름 순으로 출력:
 
+모든 trace 가 `[DEBUG <FROM> → <TO>] <body>` 형식 — entity 흐름 (dba 패턴 답습) 단일 라인에 명시.
+
 | 카테고리 | 출력 예 | 어디서 |
 |---|---|---|
-| **AUTH path** | `[DEBUG AUTH path] direct (url=…, client_id=…, scope=…)` | `auth_local.py` provider/direct 분기점 |
-| **AUTH JWT** | `[DEBUG AUTH JWT] {'alg': 'RS256', 'sub': '…', 'aud': '…', 'scope': '…/invoke', …}` | JWT 획득 직후 (sanitized) |
-| **MCP setup** | `[DEBUG MCP setup] gateway_url=…, bearer=…ABCD (len=883)` | `mcp_client.py` Gateway 클라이언트 생성 시 |
-| **MCP tools** | `[DEBUG MCP tools] prefix='cloudwatch-wrapper___' matched 2/4: […]` | `local/run.py` tool prefix 필터 직후 |
-| **toolUse / toolResult** | `┏━━━ message complete (role=assistant) ━━━ 🔧 toolUse: list_alarms({}) ━━━┗` | Strands stream event message 완성 시 |
-| **token usage** | `[DEBUG ← usage] total=2,891 in=2,862 out=29 cacheR=0 cacheW=0` | Bedrock streaming metadata 도착 시 |
+| **token request (direct)** | `[DEBUG Monitor → Cognito] direct token request (url=…, client_id=…, scope=…)` | `auth_local.py` direct 분기 |
+| **token request (provider)** | `[DEBUG Monitor → AgentCore Identity] via provider (provider=…)` | `auth_local.py` provider 분기 (Phase 3+) |
+| **JWT received** | `[DEBUG Cognito → Monitor] JWT {'alg': 'RS256', 'sub': '…', 'scope': '…/invoke', …}` | JWT 획득 직후 (sanitized) |
+| **MCP client init** | `[DEBUG Monitor → Gateway] MCP client init (gateway_url=…, bearer=…ABCD)` | `mcp_client.py` |
+| **MCP tools listed** | `[DEBUG Gateway → Monitor] MCP tools matched 2/4 (prefix='cloudwatch-wrapper___'): […]` | `local/run.py` tool prefix 필터 직후 |
+| **toolUse / toolResult** | `┏━━━ message complete (role=assistant) ━━━` <br> `  💬 Bedrock → Monitor (decided: call tool)` <br> `    🔧 toolUse: list_alarms({})` <br> `┗━━━` | Strands stream event message 완성 시. 박스 내부도 외부 trace 와 동일 entity 명명 (Bedrock / Monitor / Lambda / User) 으로 통일 — dba 의 `LLM/AGENT/TOOL` 추상 미차용 (혼란 회피) |
+| **token usage** | `[DEBUG Bedrock → Monitor] usage total=2,891 in=2,862 out=29 cacheR=0 cacheW=0` | Bedrock streaming metadata 도착 시 |
 
 `DEBUG` 미설정 시 모든 helper 가 no-op — 기존 출력과 100% 동일.
 
@@ -161,9 +164,10 @@ async for event in agent.stream_async(prompt):
 |---|---|
 | **CYAN** | setup / config trace (auth path, MCP setup, tool list 매칭) |
 | **GREEN** | acquired / saved (JWT 획득 완료) |
-| **YELLOW** | tool result (Lambda 응답) |
+| **YELLOW** | tool result (Lambda 응답) — `🔧 Lambda → Monitor (tool result)` |
+| **BLUE** | user 입력 (text) — `👤 User → Monitor (input)` |
 | **MAGENTA** | message 박스 보더 |
-| **WHITE** | tool 호출 (`🔧 toolUse: …`) |
+| **WHITE** | Bedrock 의 도구 호출 결정 — `💬 Bedrock → Monitor (decided: call tool)` |
 | **DIM** | metadata (token usage 누적) |
 | **RED** | error trace (현재 미사용, 향후 retry/exception 트레이스용) |
 
@@ -196,13 +200,64 @@ DEBUG=1 uv run python -m agents.monitor.local.run --mode live
 
 **확인됨 (2026-05-11)**: live mode, 6,333 token, real/noise 분류 정확. on/off 결과 동일.
 
+### 5-1. DEBUG=1 trace 가 보여주는 호출 시퀀스
+
+`DEBUG=1` 으로 한 번 돌려보면 Phase 2 의 모든 컴포넌트가 어떻게 협력하는지가 한 화면에 드러남. 위 명령의 trace 를 시퀀스 다이어그램으로 정리:
+
+```
+User      Monitor    Cognito    Gateway    Lambda     Bedrock
+  │          │          │          │          │          │
+  │  cmd     │          │          │          │          │
+  ├─────────▶│          │          │          │          │
+  │          │          │          │          │          │
+  │          │  POST    │          │          │          │
+  │          ├─────────▶│          │          │          │
+  │          │  JWT     │          │          │          │
+  │          │◀─────────┤          │          │          │
+  │          │          │          │          │          │
+  │          │  MCP list_tools     │          │          │
+  │          ├──────────┼─────────▶│          │          │
+  │          │  4 tools            │          │          │
+  │          │◀─────────┼──────────┤          │          │
+  │          │          │          │          │          │
+  │          │  LLM call #1 (sys+tools+query)            │
+  │          ├──────────┼──────────┼──────────┼─────────▶│
+  │          │  toolUse(list_live_alarms) {in=2862,out=29}
+  │          │◀─────────┼──────────┼──────────┼──────────┤
+  │          │          │          │          │          │
+  │          │  MCP tool call      │          │          │
+  │          ├──────────┼─────────▶│          │          │
+  │          │          │          │  invoke (AWS-internal)
+  │          │          │          ┝┄┄┄┄┄┄┄┄▶│          │
+  │          │          │          │  alarms (AWS-internal)
+  │          │          │          │◀┄┄┄┄┄┄┄┄┥          │
+  │          │  toolResult         │          │          │
+  │          │◀─────────┼──────────┤          │          │
+  │          │          │          │          │          │
+  │          │  LLM call #2 (+ toolResult)               │
+  │          ├──────────┼──────────┼──────────┼─────────▶│
+  │          │  text {in=3161,out=282}                   │
+  │ ◀stream ─┤◀─────────┼──────────┼──────────┼──────────┤
+  │          │          │          │          │          │
+  │          │  📊 Total: 6,334 tokens                   │
+```
+
+**범례**: `├──▶│` = call (sender → receiver) / `│◀──┤` = response / `┼` = arrow 가 통과만 하는 lifeline (해당 entity 미관여) / `┄` (점선) = AWS-internal flow (Gateway → Lambda forwarding, client trace 불가 — CloudWatch logs 만 가능) / `Monitor` 컬럼 = Strands `Agent` 가 토큰 획득·Gateway 호출·Bedrock 통신을 모두 조율하는 hub.
+
+**핵심 인사이트 4가지**:
+1. **Agent loop = LLM call 2번** — "도구 호출 결정" (call #1, output 29 tok) + "결과 분석" (call #2, output 282 tok). 도구가 N개 더 호출되면 call 도 N+1 회로 증가.
+2. **Tool result 의 `role=user`** — Bedrock 규약. assistant 가 toolUse → 시스템이 그 결과를 user message 로 다시 주입 → assistant 가 다음 응답 생성. "user 가 말한 적 없는데 user role" 헷갈림 포인트.
+3. **Prompt caching 효과 — single invocation 내 즉시** — `cache_tools="default"` + system prompt cachePoint (Layer 1+2) 적용 후, call #1 이 system+tools 를 cache write (`cacheW≈2,486`), call #2 가 즉시 hit (`cacheR≈2,486`). agent loop 안의 2-step LLM 만으로도 ~27% 비용 절감. 5분 이내 재호출 시 warm cache → cacheW=0, ~74% 절감.
+4. **TTFT vs total duration** — `[DEBUG Bedrock → Monitor] call #N TTFT Xms` (첫 token 도착) + `call #N done — total Yms` (응답 완료) 분리 출력. Y − X = output token 생성 시간 (~145 tok/s @ Sonnet 4.6). cache hit 시 TTFT 도 단축됨.
+
 ---
 
 ## 6. 알려진 제약
 
-- **container 에서 DEBUG 켜기는 별도 작업** — Phase 3 deploy 시 `agentcore.launch(env_vars={"DEBUG": "1"})` 옵션 노출 필요
-- **assistant text block 박스 skip** — stream delta 가 이미 출력하므로 중복 회피 (의도적; `event_dump.py:_interesting_blocks`)
-- **메모리 캐시 영향 없음** — `dprint`/`dump_stream_event` 는 동기 print only, agent state 무수정
+- **container 에서 DEBUG 켜기** — Phase 3 deploy 의 `agentcore.launch(env_vars=...)` 가 `DEBUG=1` 받게 노출되어 있는지 **Phase 3 review 시 검증 필요** (현재 미확인, first-pass 코드에 이미 옵션 노출되어 있을 가능성 있음).
+- **AWS-internal 묵음** — Gateway → Lambda forwarding (다이어그램 점선 `┄`) 은 client trace 불가. CloudWatch logs 로만 가시화.
+- **assistant text block 박스 skip** — stream delta 가 이미 출력하므로 중복 회피 (의도적; `event_dump.py:_interesting_blocks`).
+- **메모리 캐시 영향 없음** — `dprint`/`dump_stream_event` 는 동기 print only, agent state 무수정.
 
 ---
 

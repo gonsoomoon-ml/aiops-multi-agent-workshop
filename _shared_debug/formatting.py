@@ -55,6 +55,22 @@ def dprint(label: str, body: str = "", color: str = "cyan") -> None:
         print(f"\n{c}[DEBUG {label}]{NC}")
 
 
+def dprint_box(top_label: str, body: str | list[str], color: str = "magenta") -> None:
+    """박스 보더로 감싼 multi-line dump (dba ``dump_prompt`` 박스 모티프).
+
+    body 가 문자열이면 줄 단위 분할, list 면 그대로 사용.
+    """
+    if not is_debug():
+        return
+    c = _COLOR_MAP.get(color, MAGENTA)
+    lines = body.split("\n") if isinstance(body, str) else body
+    bar = "━" * max(2, 60 - len(top_label))
+    print(f"\n{c}┏━━━ {top_label} {bar}{NC}")
+    for line in lines:
+        print(f"  {line}")
+    print(f"{c}┗{'━' * 64}{NC}")
+
+
 def mask(secret: str, keep: int = 4) -> str:
     """secret 의 마지막 N (기본 4) 자만 노출. 길이 < N+4 면 전체 가림."""
     if not secret:

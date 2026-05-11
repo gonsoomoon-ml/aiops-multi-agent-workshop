@@ -57,7 +57,7 @@ def _fetch_token_via_provider() -> str:
     region = os.environ.get("AWS_REGION") or "us-west-2"
     provider_name = require_env("OAUTH_PROVIDER_NAME")
 
-    dprint("AUTH path", f"via_provider (provider={provider_name})", color="cyan")
+    dprint("Monitor → AgentCore Identity", f"via provider (provider={provider_name})", color="cyan")
     agentcore = boto3.client("bedrock-agentcore", region_name=region)
     response = agentcore.get_resource_oauth2_token(
         resourceCredentialProviderName=provider_name,
@@ -65,7 +65,7 @@ def _fetch_token_via_provider() -> str:
         oauth2Flow="M2M",
     )
     token = response["accessToken"]
-    dprint("AUTH JWT", str(redact_jwt(token)), color="green")
+    dprint("AgentCore Identity → Monitor", f"JWT {redact_jwt(token)}", color="green")
     return token
 
 
@@ -82,7 +82,7 @@ def _fetch_token_direct() -> str:
     scope = require_env("COGNITO_GATEWAY_SCOPE")
 
     url = f"https://{domain}.auth.{region}.amazoncognito.com/oauth2/token"
-    dprint("AUTH path", f"direct (url={url}, client_id={client_id}, scope={scope})", color="cyan")
+    dprint("Monitor → Cognito", f"direct token request (url={url}, client_id={client_id}, scope={scope})", color="cyan")
     body = urllib.parse.urlencode({
         "grant_type": "client_credentials",
         "scope": scope,
@@ -98,7 +98,7 @@ def _fetch_token_direct() -> str:
     )
     with urllib.request.urlopen(req, timeout=10) as resp:
         token = json.load(resp)["access_token"]
-    dprint("AUTH JWT", str(redact_jwt(token)), color="green")
+    dprint("Cognito → Monitor", f"JWT {redact_jwt(token)}", color="green")
     return token
 
 

@@ -98,6 +98,54 @@ agent.stream_async(query)  →  LLM + tool calls
 
 자세한 module map: [`agents/monitor/shared/__init__.py`](../../agents/monitor/shared/__init__.py).
 
+`create_agent()` 가 추가로 구성하는 것:
+- **Prompt caching (Layer 1+2)** — `BedrockModel(cache_tools="default")` + `system_prompt=[SystemContentBlock(text=...), SystemContentBlock(cachePoint={"type":"default"})]`. agent loop 의 2-step LLM 만으로도 cache hit, 5분 warm TTL.
+- **FlowHook** (DEBUG=1 시) — `BeforeModelCall`/`AfterModelCall`/`BeforeToolCall` hook 으로 pre-call 시점 + LLM duration + TTFT 가시화. 자세한 동작: [`debug_mode.md`](debug_mode.md).
+
+### 시퀀스 (entity 간 시점 순서)
+
+위 호출 흐름을 entity timeline 으로 펼침. `DEBUG=1` 으로 직접 검증 가능 — 자세한 trace 해석은 [`docs/learn/debug_mode.md`](debug_mode.md) §5-1 참고.
+
+```
+User      Monitor    Cognito    Gateway    Lambda     Bedrock
+  │          │          │          │          │          │
+  │  cmd     │          │          │          │          │
+  ├─────────▶│          │          │          │          │
+  │          │          │          │          │          │
+  │          │  POST    │          │          │          │
+  │          ├─────────▶│          │          │          │
+  │          │  JWT     │          │          │          │
+  │          │◀─────────┤          │          │          │
+  │          │          │          │          │          │
+  │          │  MCP list_tools     │          │          │
+  │          ├──────────┼─────────▶│          │          │
+  │          │  4 tools            │          │          │
+  │          │◀─────────┼──────────┤          │          │
+  │          │          │          │          │          │
+  │          │  LLM call #1 (sys+tools+query)            │
+  │          ├──────────┼──────────┼──────────┼─────────▶│
+  │          │  toolUse(list_live_alarms) {in=2862,out=29}
+  │          │◀─────────┼──────────┼──────────┼──────────┤
+  │          │          │          │          │          │
+  │          │  MCP tool call      │          │          │
+  │          ├──────────┼─────────▶│          │          │
+  │          │          │          │  invoke (AWS-internal)
+  │          │          │          ┝┄┄┄┄┄┄┄┄▶│          │
+  │          │          │          │  alarms (AWS-internal)
+  │          │          │          │◀┄┄┄┄┄┄┄┄┥          │
+  │          │  toolResult         │          │          │
+  │          │◀─────────┼──────────┤          │          │
+  │          │          │          │          │          │
+  │          │  LLM call #2 (+ toolResult)               │
+  │          ├──────────┼──────────┼──────────┼─────────▶│
+  │          │  text {in=3161,out=282}                   │
+  │ ◀stream ─┤◀─────────┼──────────┼──────────┼──────────┤
+  │          │          │          │          │          │
+  │          │  📊 Total: 6,334 tokens                   │
+```
+
+**범례**: `├──▶│` = call / `│◀──┤` = response / `┼` = arrow 가 통과만 하는 lifeline (해당 entity 미관여) / `┄` (점선) = AWS-internal flow (Gateway → Lambda forwarding, client trace 불가 — CloudWatch logs 만 가능) / `Monitor` 컬럼 = Strands `Agent` 가 토큰 획득·Gateway 호출·Bedrock 통신을 모두 조율하는 hub.
+
 ---
 
 ## 진행 단계
@@ -191,11 +239,13 @@ bash infra/cognito-gateway/teardown.sh
 | [`agents/monitor/shared/__init__.py`](../../agents/monitor/shared/__init__.py) | 4-helper module map + 호출 흐름 |
 | [`agents/monitor/local/run.py`](../../agents/monitor/local/run.py) | Phase 2 entry — `--mode past|live` |
 | [`agents/monitor/shared/prompts/system_prompt_live.md`](../../agents/monitor/shared/prompts/system_prompt_live.md) | live mode prompt — `Tags.Classification` 신뢰 |
+| [`debug_mode.md`](debug_mode.md) | `DEBUG=1` 활성 시 cross-phase trace (auth / MCP / tool / TTFT / LLM call duration) — Phase 2 검증에 직접 활용 |
 | [`../design/phase2.md`](../design/phase2.md) | 의사결정 로그 (D1~D10) — Smithy 폐기, hybrid CFN+boto3, Lambda intent shape |
 
 ## 알려진 제약
 
-- **OAuth provider 의존**: `local/run.py` 는 `OAUTH_PROVIDER_NAME` env 필요 — Phase 3 Runtime deploy 가 생성. Phase 2 단독 시 local 검증 불가.
 - **Token TTL**: Cognito M2M token default 1시간. Long-running session 시 새 MCPClient 생성 필요 (현 helper 는 한 번 받은 token 을 closure 에 보관).
 - **Tool prefix coupling**: `modes.py` 의 prefix (`history-mock___`, `cloudwatch-wrapper___`) 가 `setup_gateway.py` 의 Target name 과 implicit 결합 — 변경 시 두 파일 동시 수정.
 - **Lambda 응답 shape 차이**: `history-mock` (PascalCase, Phase 1 baseline 호환) vs `cloudwatch-wrapper` (snake_case, LLM 친화). `system_prompt_past.md` / `system_prompt_live.md` 가 각각 정합.
+
+> Note: 이전 제약 "Phase 2 단독 시 local 검증 불가" 는 **해소됨** — `auth_local.py` 의 2-mode dispatch (`OAUTH_PROVIDER_NAME` env 유무로 provider vs Cognito 직접 호출 자동 분기) 로 Phase 3 미배포 상태에서도 `local/run.py` 동작.

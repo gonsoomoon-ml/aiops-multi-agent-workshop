@@ -39,7 +39,9 @@ T+5m    Supervisor 종합 → 진단 리포트 자동 commit
 - **Multi-agent orchestration** — Sequential CLI → A2A 그래프 진화
 - **CFN + boto3 하이브리드** — 표준 자원은 IaC, AgentCore 자원은 SDK step-by-step
 - **JWT M2M 인증** — Cognito ResourceServer + scope + `customJWTAuthorizer`
-- **Debug mode** — env `DEBUG=1` 로 phase 횡단 trace (auth/MCP/tool/usage)
+- **Prompt caching** — `cache_tools="default"` + `SystemContentBlock` cachePoint (Layer 1+2) → single invocation 내 즉시 hit + 5분 warm TTL
+- **Strands hooks** — `BeforeModelCallEvent` / `AfterModelCallEvent` / `BeforeToolCallEvent` 로 pre-call 시점 + LLM duration + TTFT 측정
+- **Debug mode** — env `DEBUG=1` 로 phase 횡단 trace (auth / MCP / tool / TTFT / cache)
 
 ---
 

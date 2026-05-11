@@ -19,7 +19,7 @@ from .env_utils import require_env
 
 def create_mcp_client(gateway_token: str) -> MCPClient:
     gateway_url = require_env("GATEWAY_URL")
-    dprint("MCP setup", f"gateway_url={gateway_url}, bearer={mask(gateway_token)}", color="cyan")
+    dprint("Monitor → Gateway", f"MCP client init (gateway_url={gateway_url}, bearer={mask(gateway_token)})", color="cyan")
 
     def _transport():
         return streamablehttp_client(

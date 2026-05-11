@@ -14,7 +14,7 @@ import os
 
 from dotenv import load_dotenv
 
-from _shared_debug import dprint, dump_stream_event, is_debug
+from _shared_debug import dprint, dprint_box, dump_stream_event, is_debug
 from agents.monitor.shared.agent import create_agent
 from agents.monitor.shared.auth_local import get_local_gateway_token
 from agents.monitor.shared.mcp_client import create_mcp_client
@@ -51,16 +51,21 @@ async def _stream_response(agent, prompt: str) -> None:
         "cacheReadInputTokens": 0,
         "cacheWriteInputTokens": 0,
     }
+    text_label_printed = False
     async for event in agent.stream_async(prompt):
+        # dump_stream_event 가 먼저 — TTFT 측정이 첫 chunk 출력보다 앞서야 가독성 ↑
+        dump_stream_event(event, agent=agent)
         data = event.get("data", "")
         if data:
+            if is_debug() and not text_label_printed:
+                dprint("Bedrock → User", "🧠 LIVE — streaming response →", color="white")
+                text_label_printed = True
             print(data, end="", flush=True)
         metadata = event.get("event", {}).get("metadata", {})
         if "usage" in metadata:
             usage = metadata["usage"]
             for key in usage_totals:
                 usage_totals[key] += usage.get(key, 0)
-        dump_stream_event(event)
     print()
     _print_token_usage(usage_totals)
 
@@ -74,9 +79,24 @@ async def _amain(mode: str, query: str) -> None:
         tools = [t for t in all_tools if t.tool_name.startswith(target_prefix)]
         if is_debug():
             dprint(
-                "MCP tools",
-                f"prefix='{target_prefix}' matched {len(tools)}/{len(all_tools)}: "
-                f"{[t.tool_name for t in tools]} (all={[t.tool_name for t in all_tools]})",
+                "Gateway → Monitor",
+                f"MCP tools matched {len(tools)}/{len(all_tools)} "
+                f"(prefix='{target_prefix}'): {[t.tool_name for t in tools]} "
+                f"(all={[t.tool_name for t in all_tools]})",
+                color="cyan",
+            )
+            schema_lines = []
+            for t in tools:
+                spec = getattr(t, "tool_spec", {}) or {}
+                desc = spec.get("description", "(no description)")
+                input_schema = spec.get("inputSchema", {})
+                schema_lines.append(f"[{t.tool_name}]")
+                schema_lines.append(f"  description: {desc}")
+                schema_lines.append(f"  inputSchema: {input_schema}")
+                schema_lines.append("")
+            dprint_box(
+                f"MCP tool schemas ({len(tools)} filtered)",
+                schema_lines,
                 color="cyan",
             )
         if not tools:
