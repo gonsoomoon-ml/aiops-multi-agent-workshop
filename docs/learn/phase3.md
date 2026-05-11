@@ -115,7 +115,7 @@ agent.stream_async(query)
 uv run agents/monitor/runtime/deploy_runtime.py
 ```
 
-첫 배포 ~5-10분 (Docker build + ECR push 가 대부분), 이후 update ~40초. 성공 시 `agents/monitor/runtime/.env` 에 `RUNTIME_ARN` / `RUNTIME_ID` / `OAUTH_PROVIDER_NAME` 저장.
+첫 배포 ~5-10분 (Docker build + ECR push 가 대부분), 이후 update ~40초. 성공 시 **repo root `.env`** 에 `MONITOR_RUNTIME_NAME` / `MONITOR_RUNTIME_ARN` / `MONITOR_RUNTIME_ID` / `MONITOR_OAUTH_PROVIDER_NAME` 저장 (Phase 4/5 의 `INCIDENT_*` / `SUPERVISOR_*` 와 prefix namespace 분리).
 
 ### 3. 검증
 
@@ -125,7 +125,13 @@ uv run agents/monitor/runtime/deploy_runtime.py
 uv run agents/monitor/runtime/invoke_runtime.py --mode live
 ```
 
-답변에 noise/real 라벨 정확히 분리 + token usage 출력.
+답변에 noise/real 라벨 정확히 분리 + token usage + TTFT/total elapsed 출력. 마지막 라인 예:
+```
+📊 Tokens — Total: 6,334 | Input: 1,051 | Output: 311 | Cache R/W: 4,972/0
+✅ 완료 — TTFT 4.5초 / total 6.6초
+```
+
+**TTFT (Time To First Token)** = invoke 시작부터 첫 `agent_text_stream` chunk 도착까지의 client-perceived latency. Container 내부 FlowHook 의 TTFT (Bedrock 호출 latency) 와 다름 — client TTFT 는 network RTT + AgentCore 라우팅 + container 의 전체 agent loop + 첫 chunk 시작점까지 모두 포함.
 
 #### 3-2. P3-A3 — C1 검증 (수동 비교)
 
@@ -145,14 +151,68 @@ uv run agents/monitor/runtime/invoke_runtime.py --mode past
 
 > Phase 3 first-pass 의 `verify_c1.py` (4 assertion × 3 runs schema diff 자동화) 는 second-pass 에서 **제거** — structural invariant 가 코드 구조에서 enforced, automated test 가 LLM 출력 변동에 fragile (`docs/design/phase3.md` §8-2 의 의사결정 로그만 historical 보존).
 
-#### 3-3. CloudWatch 로그 (옵션 — debug mode 시점)
+#### 3-3. Debug 모드 (선택) — Container trace 를 CloudWatch logs 로
+
+호스트 `DEBUG=1` 은 `invoke_runtime.py` 의 client process 에만 영향. 진짜 debug 코드 (FlowHook / dump_stream_event) 는 Runtime container 안에서 실행되므로 **container env 가 `DEBUG=1` 이어야** trace 활성. container env 는 deploy 시점에 고정 → 재배포 필요.
 
 ```bash
-aws logs tail /aws/bedrock-agentcore/runtimes/aiops_demo_${DEMO_USER}_monitor \
+# 1. DEBUG=1 으로 재배포 → container env 에 DEBUG=1 forward
+DEBUG=1 uv run agents/monitor/runtime/deploy_runtime.py
+
+# 2. invoke (DEBUG prefix 불필요 — container 가 이미 DEBUG=1)
+uv run agents/monitor/runtime/invoke_runtime.py --mode live
+
+# 3. CloudWatch logs 에서 trace 확인 — .env 변수 shell 에 export 후 tail
+set -a; source .env; set +a
+aws logs tail /aws/bedrock-agentcore/runtimes/${MONITOR_RUNTIME_ID}-DEFAULT \
     --follow --region "${AWS_REGION:-us-west-2}"
 ```
 
-`DEBUG=1 uv run agents/monitor/runtime/deploy_runtime.py` 으로 배포하면 container env 에 `DEBUG=1` forward → FlowHook + TTFT + message complete 박스 + usage trace 가 CloudWatch 에 출력. 자세히: [`debug_mode.md`](debug_mode.md).
+> 로그 그룹 이름 형식: `/aws/bedrock-agentcore/runtimes/<MONITOR_RUNTIME_ID>-DEFAULT` — Runtime ID (예: `aiops_demo_bob_monitor-5Ir33SD7Dl`) + `-DEFAULT` (endpoint qualifier) suffix. AgentCore 가 deploy 시 자동 생성. shell 에서 `${MONITOR_RUNTIME_ID}` 변수 사용 전 반드시 `set -a; source .env; set +a` 로 export (python-dotenv 는 invoke/deploy 안에서만 load, shell 은 미공유).
+
+확인 가능 trace (DEBUG=1 container 기준):
+- `Monitor → AgentCore Identity` (provider 경로) → `AgentCore Identity → Monitor` (JWT)
+- `Monitor → Gateway` (MCP client init) → `Gateway → Monitor` (tool list + schemas)
+- `system prompt loaded` 박스
+- `Monitor → Bedrock LLM call #N` (delta messages dump) + `call #N TTFT Xms` + `call #N done — total Yms`
+- `Bedrock → Monitor (decided: call tool)` 박스 (toolUse 결정)
+- `Monitor → Gateway` (tool call)
+- `Lambda → Monitor (tool result)` 박스
+- `Bedrock → Monitor` (usage + cache R/W)
+
+자세한 trace 의미 / 색·박스 의미: [`debug_mode.md`](debug_mode.md).
+
+#### 3-4. Warm container 효과 (선택) — `--session-id`
+
+매 invoke 가 새 microVM 에 할당되면 container 가 cold start (python interpreter + module import + SDK 초기화 등). 같은 `runtimeSessionId` 로 반복 호출 시 AgentCore 가 같은 warm container 로 routing → **TTFT 단축** 시연 가능.
+
+```bash
+# 1. Fresh microVM (cold container) — session-id 미설정
+uv run agents/monitor/runtime/invoke_runtime.py --mode live
+
+# 2. 같은 session-id 로 재호출 (warm container hit)
+#    AgentCore 제약: runtimeSessionId 최소 33자 — UUID hex (32자) + prefix 권장
+SID="workshop-$(uuidgen | tr -d -)"   # → workshop-<32 hex chars> = 41자
+uv run agents/monitor/runtime/invoke_runtime.py --mode live --session-id "$SID"
+uv run agents/monitor/runtime/invoke_runtime.py --mode live --session-id "$SID"
+uv run agents/monitor/runtime/invoke_runtime.py --mode live --session-id "$SID"
+```
+
+마지막 라인 `✅ 완료 — TTFT X.X초 / total Y.Y초` 비교:
+- 1차 cold microVM: TTFT 6~8초 범위
+- 같은 ID 재호출 (warm): TTFT 4~6초 범위 → **~0.5-3초 단축** (network/AgentCore 운영 변동성 포함)
+- 실측 폭은 매 시점 다름 — workshop 라이브 시연 시 청중이 직접 확인
+
+**두 가지 caching layer 비교**:
+
+| Layer | 도구 | 효과 | 어디서 측정 |
+|---|---|---|---|
+| **Prompt cache** (Bedrock) | `cache_tools="default"` + system prompt cachePoint | input token 단가 ~90% 감 | usage 라인의 `Cache R/W` |
+| **Warm container** (AgentCore) | `runtimeSessionId` 반복 | **TTFT 단축 (~0.5-3초)** | `✅ 완료 — TTFT X.X초` |
+
+둘 다 다른 메커니즘 — 청중에 "비용 절감 vs 응답성 향상" 차이 학습.
+
+dba `chat.py` 가 multi-turn 대화에 같은 패턴 사용 (첫 응답에서 받은 sessionId 를 후속 invoke 에 재전달). 본 invoke_runtime.py 는 단일 호출이라 사용자가 ID 명시.
 
 ### 4. 정리 (P3-A5)
 

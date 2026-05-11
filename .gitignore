@@ -50,8 +50,9 @@ infra/cognito-gateway/lambda/history_mock/data/
 # Phase 2: cfn package output
 infra/cognito-gateway/cognito.packaged.yaml
 
-# Phase 3: deploy_runtime.py step [0] copies shared/ into build context (gitignored)
+# Phase 3: deploy_runtime.py step [0] copies shared/ + _shared_debug/ into build context (gitignored)
 agents/monitor/runtime/shared/
+agents/monitor/runtime/_shared_debug/
 # Phase 3: bedrock_agentcore_starter_toolkit auto-generates this config file
 agents/monitor/runtime/.bedrock_agentcore.yaml
 

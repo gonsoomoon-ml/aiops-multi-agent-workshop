@@ -21,7 +21,7 @@ Phase 3 추가 자원 (IAM inline policy, OAuth2CredentialProvider) 을 boto3 �
     3. Runtime 배포 (Docker 빌드 → ECR 푸시 → AgentCore Runtime 생성)
     4. 추가 권한 부착 + OAuth2CredentialProvider 생성
     5. READY 상태 대기 (10s × 60 = 최대 10분)
-    6. RUNTIME_ARN / RUNTIME_ID / OAUTH_PROVIDER_NAME 을 runtime/.env 에 저장
+    6. MONITOR_RUNTIME_NAME / _ARN / _ID / OAUTH_PROVIDER_NAME 을 repo root .env 에 저장
 
 reference:
     - phase3.md §4 (5단계 흐름) + §5 (OAuth provider 매커니즘)
@@ -254,36 +254,37 @@ def wait_until_ready(launch_result) -> None:
 
 
 def save_runtime_metadata(launch_result) -> None:
-    """[5/5 의 일부] Runtime metadata 를 ``agents/monitor/runtime/.env`` 에 저장.
+    """[5/5 의 일부] Runtime metadata 를 ``repo root .env`` 에 저장 (MONITOR_ prefix).
 
-    invoke_runtime.py / teardown.sh 가 같은 파일에서 read. repo root .env 와 분리된
-    Phase 3 전용 metadata.
+    Phase 4/5 multi-agent 와 prefix 충돌 없도록 ``MONITOR_RUNTIME_*`` namespace.
+    invoke_runtime.py / teardown.sh 가 같은 파일에서 read. `.env.example` 의
+    `Phase 3+ AgentCore Runtimes` 섹션에 schema 미리 노출됨.
     """
-    print(f"{YELLOW}[5/5] Runtime 정보를 runtime/.env 에 저장 중...{NC}")
+    print(f"{YELLOW}[5/5] Runtime 정보를 repo root .env 에 저장 중...{NC}")
 
-    env_file = SCRIPT_DIR / ".env"
+    env_file = PROJECT_ROOT / ".env"
     if env_file.exists():
         with open(env_file, "r") as f:
             lines = [
                 line for line in f.readlines()
-                if not line.startswith("RUNTIME_ARN=")
-                and not line.startswith("RUNTIME_ID=")
-                and not line.startswith("RUNTIME_NAME=")
-                and not line.startswith("OAUTH_PROVIDER_NAME=")
-                and not line.strip().startswith("# Phase 3 Runtime")
+                if not line.startswith("MONITOR_RUNTIME_NAME=")
+                and not line.startswith("MONITOR_RUNTIME_ARN=")
+                and not line.startswith("MONITOR_RUNTIME_ID=")
+                and not line.startswith("MONITOR_OAUTH_PROVIDER_NAME=")
+                and not line.strip().startswith("# Phase 3 — Monitor Runtime")
             ]
     else:
         lines = []
 
-    lines.append(f"\n# Phase 3 Runtime ({datetime.now().strftime('%Y-%m-%d')})\n")
-    lines.append(f"RUNTIME_NAME={AGENT_NAME}\n")
-    lines.append(f"RUNTIME_ARN={launch_result.agent_arn}\n")
-    lines.append(f"RUNTIME_ID={launch_result.agent_id}\n")
-    lines.append(f"OAUTH_PROVIDER_NAME={OAUTH_PROVIDER_NAME}\n")
+    lines.append(f"\n# Phase 3 — Monitor Runtime ({datetime.now().strftime('%Y-%m-%d')})\n")
+    lines.append(f"MONITOR_RUNTIME_NAME={AGENT_NAME}\n")
+    lines.append(f"MONITOR_RUNTIME_ARN={launch_result.agent_arn}\n")
+    lines.append(f"MONITOR_RUNTIME_ID={launch_result.agent_id}\n")
+    lines.append(f"MONITOR_OAUTH_PROVIDER_NAME={OAUTH_PROVIDER_NAME}\n")
 
     with open(env_file, "w") as f:
         f.writelines(lines)
-    print(f"{GREEN}✅ runtime/.env 저장 완료{NC}\n")
+    print(f"{GREEN}✅ repo root .env 갱신 완료 (MONITOR_ prefix){NC}\n")
 
 
 def print_summary(launch_result) -> None:

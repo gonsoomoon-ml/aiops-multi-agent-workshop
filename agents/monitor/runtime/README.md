@@ -24,9 +24,10 @@ Phase 2 의 local Monitor agent (`agents/monitor/local/run.py`) 를 AgentCore Ru
 | `deploy_runtime.py` | 5단계 배포 (build context 복사 → toolkit configure → launch → IAM/OAuth → READY → .env) |
 | `invoke_runtime.py` | `boto3 invoke_agent_runtime` 단일 호출 + SSE 파싱 + token usage 출력 |
 | `teardown.sh` | Phase 3 자원 reverse 순서 삭제 + Phase 2 자원 보존 negative check |
-| `.env` | (gitignored) Runtime metadata — `RUNTIME_ARN`, `RUNTIME_ID`, `OAUTH_PROVIDER_NAME` |
 | `shared/` | (gitignored) build 시 `agents/monitor/shared/` 복사본 — Docker build context 안 |
 | `_shared_debug/` | (gitignored) build 시 repo root `_shared_debug/` 복사본 — DEBUG=1 시 FlowHook / TTFT / dump_stream_event 활성 |
+
+> Runtime metadata (`MONITOR_RUNTIME_NAME` / `MONITOR_RUNTIME_ARN` / `MONITOR_RUNTIME_ID` / `MONITOR_OAUTH_PROVIDER_NAME`) 는 **repo root `.env`** 에 저장. Phase 4/5 와 `MONITOR_` / `INCIDENT_` / `SUPERVISOR_` prefix 로 namespace 분리.
 
 ## 실행 순서
 
