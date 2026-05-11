@@ -28,6 +28,21 @@ T+5m    Supervisor 종합 → 진단 리포트 자동 commit
 
 ---
 
+## 학습할 기술
+
+- **Strands Agent SDK** — `BedrockModel` + `@tool` + `MCPClient` + `stream_async`
+- **AgentCore Gateway** — MCP 도구 외부화 + Cognito JWT 3-layer 검증
+- **AgentCore Runtime** *(Phase 3)* — 컨테이너 배포, 로컬 코드 그대로 서비스화
+- **AgentCore Identity** *(Phase 3)* — OAuth2 provider 자동 token inject
+- **MCP 프로토콜** — streamable HTTP + `<target>___<tool>` namespacing
+- **A2A 프로토콜** *(Phase 5)* — `serve_a2a` + `LazyExecutor` AWS canonical 패턴
+- **Multi-agent orchestration** — Sequential CLI → A2A 그래프 진화
+- **CFN + boto3 하이브리드** — 표준 자원은 IaC, AgentCore 자원은 SDK step-by-step
+- **JWT M2M 인증** — Cognito ResourceServer + scope + `customJWTAuthorizer`
+- **Debug mode** — env `DEBUG=1` 로 phase 횡단 trace (auth/MCP/tool/usage)
+
+---
+
 ## 사전 요구사항
 
 - **AWS 계정** (us-west-2 region)
