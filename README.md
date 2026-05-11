@@ -1,30 +1,47 @@
 # AIOps Multi-Agent Demo
 
-> AWS Bedrock AgentCore Runtime + Strands + A2A 프로토콜 기반 AIOps 멀티에이전트 인시던트 대응 워크샵.
-> CloudWatch alarm 발화 → Monitor → Incident → Supervisor 협업 → 진단 리포트 생성 시나리오.
-
----
-
-## 시스템 목표
-
-| #  | 능력 | 검증 기준 |
-|----|---|---|
-| **C1** | Strands 로컬 → AgentCore Runtime 동일 코드 승격 | 로컬 == Runtime 응답 |
-| **C2** | Gateway + MCP 로 도구 외부화 | Agent 코드에 도구 import 0건 |
-| **C3** | A2A 프로토콜로 독립 Runtime 간 호출 | Supervisor → sub-agent AgentCard 호출 |
-| **C4** *(stretched)* | AgentCore NL Policy 가드레일 | readonly enforcement 거부 시연 |
+> AWS Bedrock AgentCore Runtime + Strands + A2A 프로토콜 기반 AIOps 멀티에이전트 워크샵.
+> CloudWatch alarm → 운영자 query → Supervisor (LLM orchestrator) → Monitor / Incident sub-agent (A2A) → 통합 진단 JSON.
 
 ---
 
 ## 시나리오 — "결제 서비스 P1 장애 대응"
 
 ```
-T-0     운영자가 stop_instance.sh 실행 → 결제 EC2 정지
-T+30s   실 CloudWatch alarm fire (payment-${DEMO_USER}-status-check)
-T+1m    Monitor 진단: live alarm noise vs real, 7일 history 패턴 분석
-T+3m    Incident 진단: runbook 매칭 → P1 escalate, 티켓 초안
-T+5m    Supervisor 종합 → 진단 리포트 자동 commit
+T-0       운영자가 stop_instance.sh 실행 → 결제 EC2 정지
+T+30s     CloudWatch alarm 발화 (payment-${DEMO_USER}-status-check, real)
+T+1m      운영자: invoke_runtime.py --query "현재 상황 진단해줘"
+            └─ Supervisor Runtime 진입 (HTTP, SigV4)
+T+1m~2m   Supervisor LLM (orchestrator) — system_prompt 만 보고 routing:
+            ├─ call_monitor_a2a   → 라이브 alarm 분류 (real 1 + noise 1, Tags.Classification)
+            └─ call_incident_a2a  → real alarm 의 runbook 매칭 + P1 진단 + 권장 조치
+T+2m      Supervisor 통합 JSON stdout:
+            { summary, monitor, incidents, next_steps }
+          (실측: 48초 / 7,045 tokens — phase5.md:228)
+
+(stretched, Phase 6+) Change Agent → 통합 JSON → GitHub 진단 리포트 commit
 ```
+
+---
+
+## 여정 요약 — 6 phase 가 3 act 로 진화
+
+| Act | Phase | 추가되는 layer | 핵심 학습 / 시스템 목표 |
+|---|---|---|---|
+| **I. 기반 + 로컬 baseline** | 0-1 | EC2 + 라이브 alarm 2종 (real + noise) + 첫 Strands Agent (mock) | Agent 결정성 + prompt 영향력 (AWS 의존 0 — 회귀 baseline) |
+| **II. AWS managed 승격** | 2-3 | Gateway + MCP + Cognito JWT + Runtime container | **C2** (도구 외부화 — `@tool` → Lambda behind Gateway) / **C1** (local == Runtime 동일 코드) |
+| **III. Multi-agent + A2A** | 4-5 | Incident Runtime + storage 추상화 (S3/GitHub) + Supervisor + A2A 프로토콜 | sequential CLI (Phase 4) → **C3** LLM-driven routing (Phase 5 — `serve_a2a` + LazyExecutor) |
+
+---
+
+## 시스템 목표
+
+| #  | 능력 | 구현 Phase | 검증 기준 |
+|----|---|---|---|
+| **C1** | Strands 로컬 → AgentCore Runtime 동일 코드 승격 | Phase 3 | `agents/monitor/local/run.py --mode past` vs `agents/monitor/runtime/invoke_runtime.py --mode past` 가 동일 분류 (`from shared.agent import create_agent` 공유 — structural invariant) |
+| **C2** | Gateway + MCP 로 도구 외부화 | Phase 2 | Agent 모듈에 boto3 / Lambda client import 0건 — 모든 도구는 MCP `<target>___<tool>` |
+| **C3** | A2A 프로토콜로 sub-agent 분리 + LLM-driven routing | Phase 5 | Supervisor LLM 이 system_prompt 만 보고 `call_monitor_a2a` / `call_incident_a2a` 호출 시점 결정 (hardcoded 분기 0건) |
+| **C4** *(stretched)* | AgentCore NL Policy 가드레일 | Phase 6+ | readonly 위반 query 차단 + 정책 메시지 반환 |
 
 ---
 
