@@ -40,9 +40,11 @@ from bedrock_agentcore.identity.auth import requires_access_token
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 
-# 로컬 dev 시 shared/ 가 ``agents/monitor/shared/`` (sibling) — sys.path 에 parent 추가.
-# 컨테이너 안에서는 build context 평탄화로 ``/app/shared/`` 가 직접 cwd 의 sibling →
-# ``-m agentcore_runtime`` 가 cwd 를 sys.path 에 자동 추가하므로 insert 불필요.
+# 로컬 dev 시 ``shared/`` 는 ``agents/monitor/shared/`` (sibling). sys.path 에 parent 추가
+# 해야 ``from shared.X import ...`` 이 resolve. container 에서는 build root = ``runtime/``
+# 가 통째로 ``/app/`` 으로 upload (flatten 아님 — ``shared/`` 는 subdir 로 보존; deploy
+# script 가 ``project/agents/monitor/shared/`` → ``runtime/shared/`` sibling copy 수행).
+# ``-m agentcore_runtime`` 가 cwd 를 sys.path 에 자동 추가하므로 container 에선 insert 불필요.
 if (SCRIPT_DIR.parent / "shared").is_dir():
     sys.path.insert(0, str(SCRIPT_DIR.parent))
 
@@ -52,6 +54,10 @@ if (SCRIPT_DIR.parent / "shared").is_dir():
 from shared.agent import create_agent          # noqa: E402 — sys.path 조정 후 import
 from shared.mcp_client import create_mcp_client  # noqa: E402
 from shared.modes import MODE_CONFIG             # noqa: E402
+
+# DEBUG=1 시 stream event trace (TTFT + message complete + usage).
+# `_shared_debug/` 는 repo root sibling — deploy_runtime.py 가 build context 로 copy.
+from _shared_debug import dump_stream_event  # noqa: E402
 
 OAUTH_PROVIDER_NAME = os.environ["OAUTH_PROVIDER_NAME"]
 COGNITO_GATEWAY_SCOPE = os.environ["COGNITO_GATEWAY_SCOPE"]  # 예: aiops-demo-ubuntu-resource-server/invoke
@@ -111,6 +117,9 @@ async def monitor_agent(payload: dict, context: Any) -> AsyncGenerator[dict, Non
             "cacheReadInputTokens": 0, "cacheWriteInputTokens": 0,
         }
         async for event in agent.stream_async(query):
+            # dump_stream_event 가 먼저 — TTFT + message complete + usage trace
+            # (DEBUG off 시 no-op). local/run.py 와 동일 패턴.
+            dump_stream_event(event, agent=agent)
             data = event.get("data", "")
             if data:
                 yield {"type": "agent_text_stream", "text": data}

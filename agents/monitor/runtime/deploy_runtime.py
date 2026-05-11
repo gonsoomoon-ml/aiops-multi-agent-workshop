@@ -61,21 +61,25 @@ OAUTH_PROVIDER_NAME = f"{AGENT_NAME}_gateway_provider"                  # D2
 
 
 def copy_shared_into_build_context() -> None:
-    """[1/5] Docker 빌드 컨텍스트(runtime/) 안으로 shared/ 복사.
+    """[1/5] Docker 빌드 컨텍스트(runtime/) 안으로 shared/ + _shared_debug/ 복사.
 
-    빌드 컨텍스트 밖(``../shared``) 참조 불가 → 단순 복사로 sibling 배치.
+    빌드 컨텍스트 밖(``../shared``, ``../../../_shared_debug``) 참조 불가 → sibling 배치.
+    container 안에선 ``/app/shared/`` + ``/app/_shared_debug/`` 로 import 가능 (cwd sys.path).
     """
-    print(f"{YELLOW}[1/5] shared/ 를 빌드 컨텍스트로 복사 중...{NC}")
-    src = PROJECT_ROOT / "agents" / "monitor" / "shared"
-    dst = SCRIPT_DIR / "shared"
-    if not src.exists():
-        print(f"{RED}❌ shared/ 를 찾을 수 없습니다: {src}{NC}")
-        sys.exit(1)
-    if dst.exists():
-        shutil.rmtree(dst)
-    shutil.copytree(src, dst)
-    print(f"{GREEN}✅ 복사 완료: {src.relative_to(PROJECT_ROOT)} → "
-          f"{dst.relative_to(PROJECT_ROOT)}{NC}\n")
+    print(f"{YELLOW}[1/5] shared/ + _shared_debug/ 를 빌드 컨텍스트로 복사 중...{NC}")
+    for src, dst in [
+        (PROJECT_ROOT / "agents" / "monitor" / "shared", SCRIPT_DIR / "shared"),
+        (PROJECT_ROOT / "_shared_debug", SCRIPT_DIR / "_shared_debug"),
+    ]:
+        if not src.exists():
+            print(f"{RED}❌ {src.name}/ 를 찾을 수 없습니다: {src}{NC}")
+            sys.exit(1)
+        if dst.exists():
+            shutil.rmtree(dst)
+        shutil.copytree(src, dst)
+        print(f"{GREEN}✅ {src.relative_to(PROJECT_ROOT)} → "
+              f"{dst.relative_to(PROJECT_ROOT)}{NC}")
+    print()
 
 
 def configure_runtime():
@@ -116,6 +120,8 @@ def launch_runtime(runtime):
     print(f"   ⏳ 첫 배포 ~5-10분, 업데이트 ~40초\n")
 
     env_vars = {
+        "AWS_REGION": REGION,
+        "AWS_DEFAULT_REGION": REGION,
         "GATEWAY_URL": os.environ["GATEWAY_URL"],
         "OAUTH_PROVIDER_NAME": OAUTH_PROVIDER_NAME,
         "COGNITO_GATEWAY_SCOPE": os.environ["COGNITO_GATEWAY_SCOPE"],
@@ -125,6 +131,8 @@ def launch_runtime(runtime):
         "OTEL_RESOURCE_ATTRIBUTES": f"service.name={AGENT_NAME}",
         "AGENT_OBSERVABILITY_ENABLED": "true",
         "DEMO_USER": DEMO_USER,
+        # 호스트 DEBUG 값 그대로 forward — 미설정/empty 면 container 에서도 off (is_debug() = False)
+        "DEBUG": os.environ.get("DEBUG", ""),
     }
 
     start_time = datetime.now()
@@ -292,9 +300,8 @@ def print_summary(launch_result) -> None:
     print(f"   다음 단계:")
     print(f"   1. live mode 호출:  uv run agents/monitor/runtime/invoke_runtime.py --mode live")
     print(f"   2. past mode 호출:  uv run agents/monitor/runtime/invoke_runtime.py --mode past")
-    print(f"   3. C1 자동 검증:    uv run agents/monitor/runtime/verify_c1.py")
-    print(f"   4. 로그 확인:       aws logs tail /aws/bedrock-agentcore/runtimes/{AGENT_NAME} --follow")
-    print(f"   5. 자원 정리:       bash agents/monitor/runtime/teardown.sh")
+    print(f"   3. 로그 확인:       aws logs tail /aws/bedrock-agentcore/runtimes/{AGENT_NAME} --follow")
+    print(f"   4. 자원 정리:       bash agents/monitor/runtime/teardown.sh")
     print()
 
 

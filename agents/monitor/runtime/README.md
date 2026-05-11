@@ -19,14 +19,14 @@ Phase 2 의 local Monitor agent (`agents/monitor/local/run.py`) 를 AgentCore Ru
 |---|---|
 | `agentcore_runtime.py` | Runtime 컨테이너 entrypoint — `BedrockAgentCoreApp` + `@app.entrypoint` SSE yield |
 | `Dockerfile` | uv-based Python 3.12 + OTEL distro + non-root user |
-| `requirements.txt` | strands-agents, boto3, bedrock-agentcore (Runtime 컨테이너용) |
+| `requirements.txt` | `strands-agents`, `strands-agents-tools`, `bedrock-agentcore>=1.4.0` (boto3 / aws-otel-distro 는 transitive 또는 Dockerfile 별도 install) |
 | `.dockerignore` | build context exclude (`__pycache__/`, `.env`, `.bedrock_agentcore.yaml`) |
 | `deploy_runtime.py` | 5단계 배포 (build context 복사 → toolkit configure → launch → IAM/OAuth → READY → .env) |
 | `invoke_runtime.py` | `boto3 invoke_agent_runtime` 단일 호출 + SSE 파싱 + token usage 출력 |
-| `verify_c1.py` | P3-A3 자동 검증 — local vs runtime JSON schema diff (4 assertion × 3 runs = 12 check) |
 | `teardown.sh` | Phase 3 자원 reverse 순서 삭제 + Phase 2 자원 보존 negative check |
 | `.env` | (gitignored) Runtime metadata — `RUNTIME_ARN`, `RUNTIME_ID`, `OAUTH_PROVIDER_NAME` |
 | `shared/` | (gitignored) build 시 `agents/monitor/shared/` 복사본 — Docker build context 안 |
+| `_shared_debug/` | (gitignored) build 시 repo root `_shared_debug/` 복사본 — DEBUG=1 시 FlowHook / TTFT / dump_stream_event 활성 |
 
 ## 실행 순서
 
@@ -40,8 +40,12 @@ uv run agents/monitor/runtime/invoke_runtime.py --mode live
 # 3. past mode 호출
 uv run agents/monitor/runtime/invoke_runtime.py --mode past
 
-# 4. C1 자동 검증 (P3-A3 — local 3회 + runtime 3회 + schema diff)
-uv run agents/monitor/runtime/verify_c1.py
+# 4. C1 검증 (수동) — local vs Runtime 출력 비교
+#   같은 mode 로 양쪽 실행 후 답변 텍스트 / token 분포 / cache 동작 동일 확인.
+#   single source of truth: agents/monitor/{local,runtime}/ 모두
+#   `from shared.agent import create_agent` — import 경로가 C1 의 structural 증명.
+uv run agents/monitor/local/run.py --mode past
+uv run agents/monitor/runtime/invoke_runtime.py --mode past
 
 # 5. 자원 정리 (P3-A5)
 bash agents/monitor/runtime/teardown.sh
@@ -51,8 +55,18 @@ bash agents/monitor/runtime/teardown.sh
 
 ```bash
 aws logs tail /aws/bedrock-agentcore/runtimes/aiops_demo_${DEMO_USER}_monitor \
-    --follow --region us-west-2
+    --follow --region "${AWS_REGION:-us-west-2}"
 ```
+
+## Debug 모드 (선택)
+
+`deploy_runtime.py` 가 호스트 `DEBUG` env 를 container `env_vars` 로 forward. 활성화 시 CloudWatch 로그에 FlowHook trace + TTFT + LLM call duration + cache 통계 출력:
+
+```bash
+DEBUG=1 uv run agents/monitor/runtime/deploy_runtime.py
+```
+
+자세한 trace 의미: [`docs/learn/debug_mode.md`](../../../docs/learn/debug_mode.md).
 
 ## 매커니즘 요약 (워크샵용)
 

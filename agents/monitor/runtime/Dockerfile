@@ -2,13 +2,12 @@ FROM ghcr.io/astral-sh/uv:python3.12-bookworm-slim
 WORKDIR /app
 
 # All environment variables in one layer
+# AWS_REGION 은 deploy_runtime.py 의 env_vars 가 주입 (hardcoded default 회피 — us-east-1 등 지원).
 ENV UV_SYSTEM_PYTHON=1 \
     UV_COMPILE_BYTECODE=1 \
     UV_NO_PROGRESS=1 \
     PYTHONUNBUFFERED=1 \
-    DOCKER_CONTAINER=1 \
-    AWS_REGION=us-west-2 \
-    AWS_DEFAULT_REGION=us-west-2
+    DOCKER_CONTAINER=1
 
 # Install dependencies (layer cached when requirements.txt unchanged)
 COPY requirements.txt requirements.txt

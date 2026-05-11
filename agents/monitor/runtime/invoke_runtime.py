@@ -3,8 +3,8 @@
 invoke_runtime.py — Phase 3 Monitor Agent Runtime 단일 호출 (배포 검증용)
 
 배포된 AgentCore Runtime 에 invoke 1회 보내고 SSE 스트리밍 응답을 stdout 에 출력합니다.
-P3-A4 (live mode 알람 분류 검증) 의 인터랙티브 도구이자, P3-A3 검증의 capture 단계
-(verify_c1.py 가 subprocess 로 호출).
+P3-A4 (live mode 알람 분류 검증) 의 인터랙티브 도구. C1 (local == Runtime) 검증은
+워크샵 청중이 두 출력을 직접 비교 — `local/run.py` 와 본 스크립트의 출력 대조.
 
 사용법:
     uv run agents/monitor/runtime/invoke_runtime.py                          # default mode=live
