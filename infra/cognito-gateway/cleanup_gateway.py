@@ -3,7 +3,9 @@
 teardown.sh 가 CFN stack 삭제 전에 호출 — Gateway/Target 이 Lambda invoke 권한
 보유 중인 동안 정리 필요. 이미 삭제됐으면 silently skip.
 
-ec-customer-support-e2e-agentcore lab-09 패턴 (역순 삭제 + target → gateway 사이 3초 wait).
+ec-customer-support-e2e-agentcore lab-09 패턴
+  (https://github.com/gonsoomoon-ml/ec-customer-support-e2e-agentcore)
+— 역순 삭제 + target → gateway 사이 3초 wait.
 """
 import os
 import sys

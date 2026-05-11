@@ -4,7 +4,9 @@ mode 분기:
     --mode past  : 과거 mock 도구 (P2-A3 — Phase 1 baseline 출력 동일성 검증)
     --mode live  : 라이브 CloudWatch 도구 (P2-A4/A5 — Phase 0 알람 분류)
 
-Phase 3 PR 에서 이 파일이 Runtime 호출 form 으로 evolve.
+본 파일은 Phase 2 local 진입점으로 **영구 보존** — Phase 3+ Runtime 은 별 entry
+(`agents/{monitor,incident,...}/runtime/agentcore_runtime.py`) 로 신설. 같은
+4 helper (agent / auth_local / mcp_client / modes) 를 재사용.
 """
 import argparse
 import asyncio
@@ -12,6 +14,7 @@ import os
 
 from dotenv import load_dotenv
 
+from _shared_debug import dprint, dump_stream_event, is_debug
 from agents.monitor.shared.agent import create_agent
 from agents.monitor.shared.auth_local import get_local_gateway_token
 from agents.monitor.shared.mcp_client import create_mcp_client
@@ -57,6 +60,7 @@ async def _stream_response(agent, prompt: str) -> None:
             usage = metadata["usage"]
             for key in usage_totals:
                 usage_totals[key] += usage.get(key, 0)
+        dump_stream_event(event)
     print()
     _print_token_usage(usage_totals)
 
@@ -68,6 +72,13 @@ async def _amain(mode: str, query: str) -> None:
     with mcp_client:  # Strands MCPClient 는 sync context manager
         all_tools = mcp_client.list_tools_sync()
         tools = [t for t in all_tools if t.tool_name.startswith(target_prefix)]
+        if is_debug():
+            dprint(
+                "MCP tools",
+                f"prefix='{target_prefix}' matched {len(tools)}/{len(all_tools)}: "
+                f"{[t.tool_name for t in tools]} (all={[t.tool_name for t in all_tools]})",
+                color="cyan",
+            )
         if not tools:
             received = [t.tool_name for t in all_tools]
             raise SystemExit(

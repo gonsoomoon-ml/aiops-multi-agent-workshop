@@ -1,7 +1,9 @@
 """Phase 2 — AgentCore Gateway 생성 (boto3, educational step-by-step).
 
-ec-customer-support-e2e-agentcore lab-03 패턴 차용. 표준 AWS 자원 (Cognito, Lambda,
-IAM Role) 은 cognito.yaml CFN 이 담당. 이 스크립트는 AgentCore 자원만.
+ec-customer-support-e2e-agentcore lab-03 패턴 차용
+  (https://github.com/gonsoomoon-ml/ec-customer-support-e2e-agentcore).
+표준 AWS 자원 (Cognito, Lambda, IAM Role) 은 cognito.yaml CFN 이 담당.
+이 스크립트는 AgentCore 자원만.
 
 Idempotent: 같은 이름의 Gateway/Target 있으면 기존 ID 재사용.
 
@@ -25,6 +27,7 @@ deploy.sh 가 CFN outputs 를 환경변수로 주입한 뒤 호출:
 """
 import os
 import sys
+import time
 
 import boto3
 
@@ -108,6 +111,27 @@ def _client():
     return boto3.client("bedrock-agentcore-control", region_name=REGION)
 
 
+def wait_for_gateway_ready(gw, gateway_id: str, max_wait: int = 90, poll: int = 3) -> None:
+    """Gateway 가 READY 상태 될 때까지 대기 (Target 추가 전 필수).
+
+    create_gateway 직후엔 CREATING — Target 추가 시 ValidationException. 본 함수가
+    get_gateway 폴링 → READY 확인 후 반환. 이미 READY 면 즉시 반환 (idempotent).
+    """
+    print(f"  ⏳ Gateway READY 대기 (max {max_wait}s)")
+    deadline = time.monotonic() + max_wait
+    status = "UNKNOWN"
+    while time.monotonic() < deadline:
+        detail = gw.get_gateway(gatewayIdentifier=gateway_id)
+        status = detail.get("status", "UNKNOWN")
+        if status == "READY":
+            print(f"  ✅ Gateway READY")
+            return
+        if status in ("FAILED", "DELETING", "DELETED"):
+            raise RuntimeError(f"Gateway 비정상 상태: {status}")
+        time.sleep(poll)
+    raise RuntimeError(f"Gateway READY 타임아웃 ({max_wait}s, 현재={status})")
+
+
 def create_gateway(gw, role_arn, pool_id, client_id, scope):
     print("\n=== Step 1: AgentCore Gateway 생성 ===")
     existing = next(
@@ -140,8 +164,25 @@ def create_gateway(gw, role_arn, pool_id, client_id, scope):
     return resp
 
 
-def create_target(gw, gateway_id, name, lambda_arn, tool_schema):
-    print(f"\n=== Step 2: GatewayTarget '{name}' 추가 ===")
+def create_or_update_target(gw, gateway_id, name, lambda_arn, tool_schema):
+    """Target 이 없으면 create, 있으면 update — lambdaArn + schema 강제 동기화.
+
+    이전 reuse-only 패턴은 stack delete→recreate 시 stale lambdaArn 잔존으로 silent
+    fail. update 분기로 재배포 시에도 lambdaArn + tool_schema 가 항상 최신.
+    sibling: github-lambda / s3-lambda 의 setup_*_target.py 와 동형.
+    """
+    print(f"\n=== Step 2: GatewayTarget '{name}' 추가/갱신 ===")
+
+    target_config = {
+        "mcp": {
+            "lambda": {
+                "lambdaArn": lambda_arn,
+                "toolSchema": {"inlinePayload": tool_schema},
+            }
+        }
+    }
+    cred_configs = [{"credentialProviderType": "GATEWAY_IAM_ROLE"}]
+
     existing = next(
         (
             t
@@ -151,23 +192,23 @@ def create_target(gw, gateway_id, name, lambda_arn, tool_schema):
         None,
     )
     if existing:
-        print(f"  이미 존재: targetId={existing['targetId']} (재사용)")
-        return existing
+        target_id = existing["targetId"]
+        print(f"  이미 존재: targetId={target_id} — lambdaArn + schema 동기화")
+        resp = gw.update_gateway_target(
+            gatewayIdentifier=gateway_id,
+            targetId=target_id,
+            name=name,
+            targetConfiguration=target_config,
+            credentialProviderConfigurations=cred_configs,
+        )
+        print(f"  ✅ targetId={target_id} 갱신 완료")
+        return resp
 
     resp = gw.create_gateway_target(
         gatewayIdentifier=gateway_id,
         name=name,
-        targetConfiguration={
-            "mcp": {
-                "lambda": {
-                    "lambdaArn": lambda_arn,
-                    "toolSchema": {"inlinePayload": tool_schema},
-                }
-            }
-        },
-        credentialProviderConfigurations=[
-            {"credentialProviderType": "GATEWAY_IAM_ROLE"}
-        ],
+        targetConfiguration=target_config,
+        credentialProviderConfigurations=cred_configs,
     )
     print(f"  ✅ targetId={resp['targetId']}")
     return resp
@@ -200,12 +241,15 @@ def main():
     gateway_id = gateway["gatewayId"]
     gateway_url = gateway["gatewayUrl"]
 
-    create_target(
+    # Target 추가 전 Gateway READY 대기 — CREATING 상태에서 Target 추가 시 ValidationException
+    wait_for_gateway_ready(gw, gateway_id)
+
+    create_or_update_target(
         gw, gateway_id, TARGET_CLOUDWATCH,
         lambda_arn=os.environ["LAMBDA_CLOUDWATCH_WRAPPER_ARN"],
         tool_schema=CW_TOOL_SCHEMA,
     )
-    create_target(
+    create_or_update_target(
         gw, gateway_id, TARGET_HISTORY,
         lambda_arn=os.environ["LAMBDA_HISTORY_MOCK_ARN"],
         tool_schema=HISTORY_TOOL_SCHEMA,

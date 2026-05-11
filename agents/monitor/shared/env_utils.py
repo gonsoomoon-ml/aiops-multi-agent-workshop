@@ -1,4 +1,9 @@
-"""환경변수 helper — agent shared 코드에서 공유."""
+"""환경변수 helper — agent shared 코드에서 공유.
+
+본 디렉토리 helper 흐름 (`shared/__init__.py` map 참조):
+  **본 파일** (env 검증) → ``auth_local`` (token 획득) → ``mcp_client`` (헤더 주입)
+  → ``agent`` (tools 주입). 사용처: ``auth_local`` + ``mcp_client`` 내부.
+"""
 import os
 
 
