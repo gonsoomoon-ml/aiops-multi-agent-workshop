@@ -30,20 +30,30 @@ T+5m    Supervisor 종합 → 진단 리포트 자동 commit
 
 ## 학습할 기술
 
+**Strands SDK**
 - **Strands Agent SDK** — `BedrockModel` + `@tool` + `MCPClient` + `stream_async`
-- **AgentCore Gateway** — MCP 도구 외부화 + Cognito JWT 3-layer 검증
+- **Strands hooks** — `BeforeModelCallEvent` / `AfterModelCallEvent` / `BeforeToolCallEvent` 로 pre-call 시점 + LLM duration + TTFT 측정
+
+**AWS Bedrock AgentCore**
 - **AgentCore Runtime** *(Phase 3)* — 컨테이너 배포, 로컬 코드 그대로 서비스화
+- **AgentCore Gateway** — MCP 도구 외부화 + Cognito JWT 3-layer 검증
 - **AgentCore Identity** *(Phase 3)* — OAuth2 provider 자동 token inject
+
+**프로토콜 + 오케스트레이션**
 - **MCP 프로토콜** — streamable HTTP + `<target>___<tool>` namespacing
 - **A2A 프로토콜** *(Phase 5)* — `serve_a2a` + `LazyExecutor` AWS canonical 패턴
+- **`@tool` wrapping a2a.client** *(Phase 5)* — Strands `Agent` 가 `sub_agents` 미지원 → sub-agent 를 도구로 노출, LLM 이 routing 결정 (caller-as-LLM-tool)
 - **Multi-agent orchestration** — Sequential CLI *(Phase 4)* → A2A 그래프 진화 *(Phase 5)*
+
+**인증 + 인프라**
+- **JWT M2M 인증** — Cognito ResourceServer + scope + `customJWTAuthorizer`
 - **CFN + boto3 하이브리드** — 표준 자원은 IaC, AgentCore 자원은 SDK step-by-step
 - **Cross-stack IAM** *(Phase 4)* — storage Lambda stack 이 cognito-gateway 의 GatewayIamRole 에 inline policy 부착 (stack 간 dependency 격리)
 - **Storage backend 추상화** *(Phase 4)* — `STORAGE_BACKEND=s3/github` env 분기, Lambda 응답 shape byte-level 동형 → Agent 코드 변경 X 로 backend swap
-- **JWT M2M 인증** — Cognito ResourceServer + scope + `customJWTAuthorizer`
+
+**성능 + 관측**
 - **Prompt caching** — `cache_tools="default"` + `SystemContentBlock` cachePoint (Layer 1+2) → single invocation 내 즉시 hit + 5분 warm TTL
 - **Warm container reuse** *(Phase 3+)* — `runtimeSessionId` 반복으로 같은 microVM 재사용 → TTFT 단축 (prompt cache 와 분리된 caching layer)
-- **Strands hooks** — `BeforeModelCallEvent` / `AfterModelCallEvent` / `BeforeToolCallEvent` 로 pre-call 시점 + LLM duration + TTFT 측정
 - **Debug mode** — env `DEBUG=1` 로 phase 횡단 trace (auth / MCP / tool / TTFT / cache), `agent_name` parameter 로 multi-agent 라벨 격리
 
 ---
