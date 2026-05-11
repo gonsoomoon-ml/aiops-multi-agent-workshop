@@ -17,14 +17,14 @@ Phase 3 의 Monitor Runtime 패턴 (`agents/monitor/runtime/`) 을 Incident Agen
 |---|---|
 | `agentcore_runtime.py` | Incident entrypoint — `@app.entrypoint` SSE yield. payload `{alarm_name}`. tool filter `${STORAGE_BACKEND}-storage___` (s3 default / github 선택) |
 | `Dockerfile` | toolkit 자동 생성 (configure 첫 실행 시) |
-| `requirements.txt` | strands-agents, bedrock-agentcore — Phase 3 monitor 와 동일 |
+| `requirements.txt` | `strands-agents`, `strands-agents-tools`, `bedrock-agentcore>=1.4.0` (boto3 / aws-otel-distro 는 transitive 또는 Dockerfile 별도 install) — Phase 3 monitor 와 동일 |
 | `.dockerignore` | build context 제외 — Phase 3 패턴 |
-| `deploy_runtime.py` | 5단계 — monitor/shared + incident/shared 둘 다 build context 로 copy (phase4.md §3-6 Option A) |
-| `invoke_runtime.py` | 단일 Incident invoke — `--alarm <full alarm name>` |
+| `deploy_runtime.py` | 5단계 — monitor/shared + incident/shared + _shared_debug 셋 다 build context 로 copy (phase4.md §3-6 Option A 확장) |
+| `invoke_runtime.py` | 단일 Incident invoke — `--alarm <full alarm name>` + `--session-id` (warm container) |
 | `teardown.sh` | Incident 자원 reverse 삭제 + Phase 3 Monitor + Phase 2 Cognito 보존 검증 |
-| `.env` | (gitignored) Runtime metadata — `RUNTIME_ARN`, `RUNTIME_ID`, `OAUTH_PROVIDER_NAME`, `INCIDENT_RUNTIME_ARN` |
 | `shared/` | (gitignored) build 시 monitor/shared 복사본 — auth_local, mcp_client, env_utils, modes |
 | `incident_shared/` | (gitignored) build 시 incident/shared 복사본 — agent.py + prompts/ |
+| `_shared_debug/` | (gitignored) build 시 repo root `_shared_debug/` 복사본 — DEBUG=1 시 FlowHook / TTFT / dump_stream_event 활성 |
 
 ## 실행 순서
 
@@ -48,9 +48,24 @@ bash agents/incident/runtime/teardown.sh
 ## CloudWatch 로그
 
 ```bash
-aws logs tail /aws/bedrock-agentcore/runtimes/aiops_demo_${DEMO_USER}_incident \
-    --follow --region us-west-2
+set -a; source .env; set +a   # INCIDENT_RUNTIME_ID + AWS_REGION
+aws logs tail /aws/bedrock-agentcore/runtimes/${INCIDENT_RUNTIME_ID}-DEFAULT \
+    --follow --region "${AWS_REGION:-us-west-2}"
 ```
+
+> 로그 그룹 형식: `/aws/bedrock-agentcore/runtimes/<INCIDENT_RUNTIME_ID>-DEFAULT` (Runtime ID + `-DEFAULT` endpoint qualifier).
+
+## Debug 모드 (선택)
+
+`deploy_runtime.py` 가 호스트 `DEBUG` env 를 container `env_vars` 로 forward. 활성화 시 CloudWatch 로그에 FlowHook trace + TTFT + LLM call duration + cache 통계 + storage tool call dump 출력:
+
+```bash
+DEBUG=1 uv run agents/incident/runtime/deploy_runtime.py
+```
+
+자세한 trace 의미: [`docs/learn/debug_mode.md`](../../../docs/learn/debug_mode.md).
+
+Runtime metadata (`INCIDENT_RUNTIME_NAME` / `INCIDENT_RUNTIME_ARN` / `INCIDENT_RUNTIME_ID` / `INCIDENT_OAUTH_PROVIDER_NAME`) 는 **repo root `.env`** 에 저장 — Phase 3 (`MONITOR_`) / Phase 5 (`SUPERVISOR_` / `MONITOR_A2A_` / `INCIDENT_A2A_`) 와 prefix namespace 분리.
 
 ## Build context 의 두 디렉토리 (phase4.md §3-6)
 

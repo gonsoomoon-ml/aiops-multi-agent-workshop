@@ -49,6 +49,7 @@ diagnosis/*.md
 infra/cognito-gateway/lambda/history_mock/data/
 # Phase 2: cfn package output
 infra/cognito-gateway/cognito.packaged.yaml
+infra/s3-lambda/s3_lambda.packaged.yaml
 
 # Phase 3: deploy_runtime.py step [0] copies shared/ + _shared_debug/ into build context (gitignored)
 agents/monitor/runtime/shared/
@@ -56,9 +57,10 @@ agents/monitor/runtime/_shared_debug/
 # Phase 3: bedrock_agentcore_starter_toolkit auto-generates this config file
 agents/monitor/runtime/.bedrock_agentcore.yaml
 
-# Phase 4: Incident deploy copies BOTH monitor/shared + incident/shared (Option A)
+# Phase 4: Incident deploy copies monitor/shared + incident/shared + _shared_debug (Option A 확장)
 agents/incident/runtime/shared/
 agents/incident/runtime/incident_shared/
+agents/incident/runtime/_shared_debug/
 # Phase 4: bedrock_agentcore_starter_toolkit auto-generates this config file
 agents/incident/runtime/.bedrock_agentcore.yaml
 # Phase 4: cfn package output

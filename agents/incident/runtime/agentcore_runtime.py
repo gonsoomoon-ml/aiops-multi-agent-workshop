@@ -66,6 +66,11 @@ except ModuleNotFoundError:
     from agents.monitor.shared.mcp_client import create_mcp_client    # noqa: E402
     from agents.incident.shared.agent import create_agent             # noqa: E402
 
+# DEBUG=1 시 stream event trace (TTFT + message complete + usage).
+# `_shared_debug/` 는 repo root sibling — deploy_runtime.py 가 build context 로 copy.
+# 컨테이너에선 /app/_shared_debug/, 로컬에선 PROJECT_ROOT/_shared_debug/ (sys.path 위 양쪽 동일 import).
+from _shared_debug import dump_stream_event  # noqa: E402
+
 OAUTH_PROVIDER_NAME = os.environ["OAUTH_PROVIDER_NAME"]
 COGNITO_GATEWAY_SCOPE = os.environ["COGNITO_GATEWAY_SCOPE"]
 
@@ -108,7 +113,7 @@ async def incident_agent(payload: dict, context: Any) -> AsyncGenerator[dict, No
     query = f'{{"alarm_name": "{alarm_name}"}}'      # LLM 입력 — system_prompt 의 schema 와 일치
 
     gateway_token = await _fetch_gateway_token()
-    mcp_client = create_mcp_client(gateway_token=gateway_token)
+    mcp_client = create_mcp_client(gateway_token=gateway_token, agent_name="Incident")
     with mcp_client:
         all_tools = mcp_client.list_tools_sync()
         tools = [t for t in all_tools if t.tool_name.startswith(TOOL_TARGET_PREFIX)]
@@ -127,6 +132,9 @@ async def incident_agent(payload: dict, context: Any) -> AsyncGenerator[dict, No
             "cacheReadInputTokens": 0, "cacheWriteInputTokens": 0,
         }
         async for event in agent.stream_async(query):
+            # dump_stream_event 가 먼저 — TTFT + message complete + usage trace
+            # (DEBUG off 시 no-op). monitor/runtime 과 동일 패턴.
+            dump_stream_event(event, agent=agent)
             data = event.get("data", "")
             if data:
                 yield {"type": "agent_text_stream", "text": data}

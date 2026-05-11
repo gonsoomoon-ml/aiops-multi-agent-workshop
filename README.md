@@ -36,13 +36,15 @@ T+5m    Supervisor 종합 → 진단 리포트 자동 commit
 - **AgentCore Identity** *(Phase 3)* — OAuth2 provider 자동 token inject
 - **MCP 프로토콜** — streamable HTTP + `<target>___<tool>` namespacing
 - **A2A 프로토콜** *(Phase 5)* — `serve_a2a` + `LazyExecutor` AWS canonical 패턴
-- **Multi-agent orchestration** — Sequential CLI → A2A 그래프 진화
+- **Multi-agent orchestration** — Sequential CLI *(Phase 4)* → A2A 그래프 진화 *(Phase 5)*
 - **CFN + boto3 하이브리드** — 표준 자원은 IaC, AgentCore 자원은 SDK step-by-step
+- **Cross-stack IAM** *(Phase 4)* — storage Lambda stack 이 cognito-gateway 의 GatewayIamRole 에 inline policy 부착 (stack 간 dependency 격리)
+- **Storage backend 추상화** *(Phase 4)* — `STORAGE_BACKEND=s3/github` env 분기, Lambda 응답 shape byte-level 동형 → Agent 코드 변경 X 로 backend swap
 - **JWT M2M 인증** — Cognito ResourceServer + scope + `customJWTAuthorizer`
 - **Prompt caching** — `cache_tools="default"` + `SystemContentBlock` cachePoint (Layer 1+2) → single invocation 내 즉시 hit + 5분 warm TTL
 - **Warm container reuse** *(Phase 3+)* — `runtimeSessionId` 반복으로 같은 microVM 재사용 → TTFT 단축 (prompt cache 와 분리된 caching layer)
 - **Strands hooks** — `BeforeModelCallEvent` / `AfterModelCallEvent` / `BeforeToolCallEvent` 로 pre-call 시점 + LLM duration + TTFT 측정
-- **Debug mode** — env `DEBUG=1` 로 phase 횡단 trace (auth / MCP / tool / TTFT / cache)
+- **Debug mode** — env `DEBUG=1` 로 phase 횡단 trace (auth / MCP / tool / TTFT / cache), `agent_name` parameter 로 multi-agent 라벨 격리
 
 ---
 
@@ -77,7 +79,7 @@ bash bootstrap.sh
 | **1** | 로컬 Monitor Agent (Strands) + 3가지 진단 유형 (Rule 폐기 / Threshold 상향 / Time window 제외) | [`docs/learn/phase1.md`](docs/learn/phase1.md) | ✅ |
 | **2** | AgentCore Gateway + MCP 도구 외부화 (CloudWatch + history mock Lambda) | [`docs/learn/phase2.md`](docs/learn/phase2.md) | ✅ |
 | **3** | Monitor Agent → AgentCore Runtime 승격 | [`docs/learn/phase3.md`](docs/learn/phase3.md) | ✅ |
-| **4** | Incident Runtime + storage Lambda (`STORAGE_BACKEND=s3` default / `github` 선택) + sequential CLI | — | 🚧 |
+| **4** | Incident Runtime + storage Lambda (`STORAGE_BACKEND=s3` default / `github` 선택) + sequential CLI | [`docs/learn/phase4.md`](docs/learn/phase4.md) | ✅ |
 | **5** | Supervisor + Monitor A2A + Incident A2A — A2A 활성화 (`serve_a2a` + LazyExecutor) | — | 🚧 |
 | **6** | EC mall 통합 — alarm 추가만으로 동일 시나리오 재현 (외부 의존) | — | 🚧 |
 

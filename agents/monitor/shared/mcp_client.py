@@ -17,9 +17,12 @@ from _shared_debug import dprint, mask
 from .env_utils import require_env
 
 
-def create_mcp_client(gateway_token: str) -> MCPClient:
+def create_mcp_client(gateway_token: str, agent_name: str = "Monitor") -> MCPClient:
+    """MCP client 생성. ``agent_name`` 으로 debug trace 라벨 prefix parameterize
+    (Phase 3 Monitor 기본 / Phase 4 Incident / Phase 5 Supervisor 등 호출자가 명시).
+    """
     gateway_url = require_env("GATEWAY_URL")
-    dprint("Monitor → Gateway", f"MCP client init (gateway_url={gateway_url}, bearer={mask(gateway_token)})", color="cyan")
+    dprint(f"{agent_name} → Gateway", f"MCP client init (gateway_url={gateway_url}, bearer={mask(gateway_token)})", color="cyan")
 
     def _transport():
         return streamablehttp_client(

@@ -117,7 +117,15 @@ def launch_runtime(runtime):
     Phase 2 가 채운 repo root .env 의 carry-over 값을 Runtime 환경변수로 전달.
     """
     print(f"{YELLOW}[3/5] Runtime 배포 중 (Docker 빌드 → ECR 푸시 → 생성)...{NC}")
-    print(f"   ⏳ 첫 배포 ~5-10분, 업데이트 ~40초\n")
+    print(f"   ⏳ 첫 배포 ~5-10분, 업데이트 ~40초")
+
+    debug_val = os.environ.get("DEBUG", "")
+    if debug_val:
+        print(f"   {GREEN}ℹ DEBUG={debug_val} 활성 — container 에 forward (FlowHook + TTFT + trace 출력){NC}")
+        print(f"     로그 확인: aws logs tail /aws/bedrock-agentcore/runtimes/<MONITOR_RUNTIME_ID>-DEFAULT --follow --region {REGION}")
+    else:
+        print(f"   {YELLOW}ℹ DEBUG 비활성 — trace 미출력. 활성화하려면 'DEBUG=1 uv run …' 재배포{NC}")
+    print()
 
     env_vars = {
         "AWS_REGION": REGION,
@@ -132,7 +140,7 @@ def launch_runtime(runtime):
         "AGENT_OBSERVABILITY_ENABLED": "true",
         "DEMO_USER": DEMO_USER,
         # 호스트 DEBUG 값 그대로 forward — 미설정/empty 면 container 에서도 off (is_debug() = False)
-        "DEBUG": os.environ.get("DEBUG", ""),
+        "DEBUG": debug_val,
     }
 
     start_time = datetime.now()
@@ -297,6 +305,11 @@ def print_summary(launch_result) -> None:
     print(f"   ECR URI:           {launch_result.ecr_uri}")
     print(f"   OAuth Provider:    {OAUTH_PROVIDER_NAME}")
     print(f"   리전:              {REGION}")
+    debug_val = os.environ.get("DEBUG", "")
+    if debug_val:
+        print(f"   DEBUG 모드:        {GREEN}ACTIVE{NC} (CloudWatch logs 에 FlowHook trace 출력)")
+    else:
+        print(f"   DEBUG 모드:        비활성 (trace 보려면 'DEBUG=1 uv run …' 재배포)")
     print()
     print(f"   다음 단계:")
     print(f"   1. live mode 호출:  uv run agents/monitor/runtime/invoke_runtime.py --mode live")

@@ -8,14 +8,14 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "${SCRIPT_DIR}/../../.." && pwd)"
 
-# .env 로드: repo root (DEMO_USER + COGNITO_*) → runtime-local (RUNTIME_ID 등 — deploy 가 작성)
+# .env 로드: repo root 단일 (Phase 4 metadata 는 INCIDENT_ prefix 로 통합 보관)
 [ -f "$PROJECT_ROOT/.env" ] && { set -a; source "$PROJECT_ROOT/.env"; set +a; }
-[ -f "${SCRIPT_DIR}/.env" ] && { set -a; source "${SCRIPT_DIR}/.env"; set +a; }
 
 REGION="${AWS_REGION:-us-west-2}"
 DEMO_USER="${DEMO_USER:?DEMO_USER 미설정 (repo root .env 필요)}"
 AGENT_NAME="aiops_demo_${DEMO_USER}_incident"
-OAUTH_PROVIDER_NAME="${AGENT_NAME}_gateway_provider"
+OAUTH_PROVIDER_NAME="${INCIDENT_OAUTH_PROVIDER_NAME:-${AGENT_NAME}_gateway_provider}"
+RUNTIME_ID="${INCIDENT_RUNTIME_ID:-}"
 ECR_REPO="bedrock-agentcore-${AGENT_NAME}"
 LOG_GROUP="/aws/bedrock-agentcore/runtimes/${AGENT_NAME}"
 
@@ -102,11 +102,11 @@ else
     echo -e "  (Log Group 없음 — skip)"
 fi
 
-# ── .env cleanup ────────────────────────────────────────────────
-if [ -f "${SCRIPT_DIR}/.env" ]; then
-    sed -i.bak '/^RUNTIME_ARN=/d; /^RUNTIME_ID=/d; /^RUNTIME_NAME=/d; /^OAUTH_PROVIDER_NAME=/d; /^INCIDENT_RUNTIME_ARN=/d; /^# Phase 4 Runtime/d' "${SCRIPT_DIR}/.env"
-    rm -f "${SCRIPT_DIR}/.env.bak"
-    echo -e "  ${GREEN}✓ ${SCRIPT_DIR}/.env 의 Phase 4 Incident entry cleanup${NC}"
+# ── .env cleanup — repo root .env 의 Phase 4 (INCIDENT_) entry 만 제거 ──
+if [ -f "${PROJECT_ROOT}/.env" ]; then
+    sed -i.bak '/^INCIDENT_RUNTIME_ARN=/d; /^INCIDENT_RUNTIME_ID=/d; /^INCIDENT_RUNTIME_NAME=/d; /^INCIDENT_OAUTH_PROVIDER_NAME=/d; /^# Phase 4 — Incident Runtime/d' "${PROJECT_ROOT}/.env"
+    rm -f "${PROJECT_ROOT}/.env.bak"
+    echo -e "  ${GREEN}✓ repo root .env 의 Phase 4 (INCIDENT_) entry cleanup${NC}"
 fi
 
 # ── dependency 보존 확인 (negative check, P4-A5) ──────────────
@@ -126,4 +126,6 @@ else
 fi
 
 echo -e "${GREEN}=== ✅ Phase 4 Incident teardown 완료 ===${NC}"
-echo -e "${YELLOW}NOTE: GitHub Lambda + Target 은 'bash infra/github-lambda/teardown.sh' 로 별도 정리${NC}"
+echo -e "${YELLOW}NOTE: Storage Lambda + Target 은 backend 별 teardown:${NC}"
+echo -e "${YELLOW}  - STORAGE_BACKEND=s3:     bash infra/s3-lambda/teardown.sh${NC}"
+echo -e "${YELLOW}  - STORAGE_BACKEND=github: bash infra/github-lambda/teardown.sh${NC}"

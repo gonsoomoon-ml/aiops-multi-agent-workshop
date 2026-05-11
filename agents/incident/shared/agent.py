@@ -13,6 +13,9 @@ from pathlib import Path
 from strands import Agent
 from strands.handlers.callback_handler import null_callback_handler
 from strands.models import BedrockModel
+from strands.types.content import SystemContentBlock
+
+from _shared_debug import FlowHook, dprint_box, is_debug
 
 _PROMPTS_DIR = Path(__file__).parent / "prompts"
 
@@ -38,9 +41,24 @@ def create_agent(
     model_id = os.environ.get("INCIDENT_MODEL_ID") or "global.anthropic.claude-sonnet-4-6"
     region = os.environ.get("AWS_REGION") or "us-west-2"
 
+    prompt_text = _load_system_prompt(system_prompt_filename)
+    dprint_box(
+        f"system prompt loaded — {system_prompt_filename} ({len(prompt_text):,} chars)",
+        prompt_text,
+        color="magenta",
+    )
+
+    # Bedrock prompt caching (Layer 1+2 — Phase 3 monitor 와 동일 dba 패턴):
+    #   Layer 1: cache_tools="default" → tool schema 캐시
+    #   Layer 2: system_prompt 가 [text + cachePoint] 리스트 → system prompt 캐시
     return Agent(
-        model=BedrockModel(model_id=model_id, region_name=region),
+        model=BedrockModel(model_id=model_id, region_name=region, cache_tools="default"),
         tools=tools,
-        system_prompt=_load_system_prompt(system_prompt_filename),
+        system_prompt=[
+            SystemContentBlock(text=prompt_text),
+            SystemContentBlock(cachePoint={"type": "default"}),
+        ],
         callback_handler=null_callback_handler,
+        # DEBUG=1 시점에만 FlowHook 등록 — pre-call (LLM / tool) 가시화. off 시 hook 0.
+        hooks=[FlowHook(agent_name="Incident")] if is_debug() else [],
     )
