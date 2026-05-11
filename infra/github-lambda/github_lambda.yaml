@@ -23,7 +23,7 @@ Parameters:
 
   GithubRepo:
     Type: String
-    Default: gonsoomoon-ml/aiops-multi-agent-demo
+    Default: gonsoomoon-ml/aiops-multi-agent-workshop
     Description: runbooks 가 들어있는 GitHub repository (`owner/repo`)
 
   GithubBranch:

@@ -107,7 +107,7 @@ step 별 분해 + idempotent 보장 + 검증 명령은 [`docs/learn/teardown.md`
 ## 폴더 구조
 
 ```
-aiops-multi-agent-demo/
+aiops-multi-agent-workshop/
 ├── agents/                      # Strands Agent + AgentCore Runtime 코드
 │   ├── monitor/                 #   Phase 1-3: 로컬 + Runtime
 │   ├── incident/                #   Phase 4: Incident Runtime + shared

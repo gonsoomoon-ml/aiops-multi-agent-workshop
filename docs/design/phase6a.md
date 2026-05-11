@@ -1088,7 +1088,7 @@ D10  AgentCore Memory — 계속 보류 (Phase 7+ 재평가)
 ## 부록 B. 디렉토리 구조 (구현 후 예상)
 
 ```
-aiops-multi-agent-demo/
+aiops-multi-agent-workshop/
 ├── agents/
 │   ├── monitor/        # Phase 3 (entrypoint A2A wrap 추가)
 │   ├── incident/       # Phase 4 (entrypoint A2A wrap 추가)

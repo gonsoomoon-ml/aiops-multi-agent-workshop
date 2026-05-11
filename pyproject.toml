@@ -1,5 +1,5 @@
 [project]
-name = "aiops-multi-agent-demo"
+name = "aiops-multi-agent-workshop"
 version = "0.1.0"
 description = "AIOps multi-agent incident response demo on Bedrock AgentCore Runtime + Strands + A2A"
 readme = "README.md"

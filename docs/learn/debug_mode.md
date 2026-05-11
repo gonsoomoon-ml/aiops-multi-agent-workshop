@@ -29,7 +29,7 @@ Phase 2+ 의 monitor agent 코드 (`agents/monitor/local/run.py`, `agents/monito
 ### 2-1. 위치 — repo root sibling 에 `_shared_debug/`
 
 ```
-aiops-multi-agent-demo/
+aiops-multi-agent-workshop/
 ├── _shared_debug/                              ← cross-phase debug helper
 │   ├── __init__.py                             ← public exports
 │   ├── formatting.py                           ← ANSI 상수 + dprint + mask + redact_jwt

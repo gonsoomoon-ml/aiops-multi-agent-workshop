@@ -15,7 +15,7 @@ Phase 2 의 Gateway 에 `github-storage` Target 1건 추가. Phase 2 Cognito sta
 
 `data/runbooks/` 디렉토리 read 권한이 필요. https://github.com/settings/tokens 에서 발급:
 
-- **public repo** (워크샵 default `gonsoomoon-ml/aiops-multi-agent-demo`): scope **불필요** — classic token 또는 fine-grained token, scope 없이 발급 가능.
+- **public repo** (워크샵 default `gonsoomoon-ml/aiops-multi-agent-workshop`): scope **불필요** — classic token 또는 fine-grained token, scope 없이 발급 가능.
 - **private repo** (fork 후 private 으로 사용 시): scope `repo` (full) 필요.
 
 발급 후 SSM 등록 — `read -s` 로 PAT 가 shell history / 화면에 남지 않게:

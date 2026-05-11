@@ -404,7 +404,7 @@ Parameters:
     Default: /aiops-demo/github-token
   GithubRepo:
     Type: String
-    Default: gonsoomoon-ml/aiops-multi-agent-demo
+    Default: gonsoomoon-ml/aiops-multi-agent-workshop
   GithubBranch:
     Type: String
     Default: main
