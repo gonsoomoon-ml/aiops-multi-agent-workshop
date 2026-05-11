@@ -9,30 +9,44 @@ Supervisor 는 운영자 (Operator CLI) 의 진입을 받음 → HTTP protocol R
 
 inbound (operator → Supervisor):
   - HTTP entrypoint, port 8080
-  - **SigV4 IAM** (Operator CLI 가 boto3 invoke_agent_runtime 사용 — Phase 4 패턴) —
-    Phase 6a Option X: Cognito 추가 자원 0, customJWTAuthorizer 미설정 → SigV4 default.
+  - **SigV4 IAM** — Operator CLI 가 boto3 invoke_agent_runtime 사용 (Phase 4 패턴).
+    customJWTAuthorizer 미설정 → AgentCore default = SigV4. Operator identity 는
+    AWS IAM credential 로 검증.
 
 outbound (Supervisor → 2 sub-agents):
   - A2A protocol over HTTPS — `https://bedrock-agentcore.{region}.amazonaws.com/runtimes/
     {quote(arn)}/invocations/`
-  - **Cognito Client M2M token** (Bearer) — Phase 2 의 기존 Client 재사용. AgentCore
-    customJWTAuthorizer 가 aud 만 검증 → Gateway scope 토큰이 sub-agent 도 통과.
+  - **Cognito Client M2M token** (Bearer) — **Option X**: Phase 2 의 기존 Client 재사용,
+    Phase 6a 가 추가하는 Cognito 자원 0. AgentCore customJWTAuthorizer 가 aud (= Client
+    id) 만 검증 → Gateway scope 토큰이 sub-agent A2A inbound 에도 통과.
   - AgentCard discovery: `<base>/.well-known/agent-card.json`
 
-사전 조건 (Runtime 환경변수):
+사전 조건 (Runtime 환경변수, deploy_runtime.py 가 launch 시 OS env 직접 주입):
     - SUPERVISOR_MODEL_ID
     - OAUTH_PROVIDER_NAME — Cognito Client M2M provider (Phase 4 incident 와 동일 키)
+    - COGNITO_GATEWAY_SCOPE — Phase 2 의 Gateway scope (sub-agent A2A inbound 통과)
     - MONITOR_A2A_RUNTIME_ARN, INCIDENT_A2A_RUNTIME_ARN — 2 sub-agents
       (Change Agent 는 후속 phase 로 연기 — Phase 6a 단순화)
     - DEMO_USER, AWS_REGION
+    - DEBUG — '1' / 'true' 시 FlowHook + dump_stream_event trace 출력 (off 시 no-op)
     - OTEL_RESOURCE_ATTRIBUTES, AGENT_OBSERVABILITY_ENABLED
+
+Runtime 환경변수는 ``Runtime.launch(env_vars=...)`` 가 OS env 로 직접 주입 — .env
+로딩 불필요 (python-dotenv 의존 제거). 로컬 dev 시는 호출 측에서 .env 로딩.
+
+사용법:
+    Runtime 컨테이너 안에서 ``python -m agentcore_runtime`` 으로 실행 (Dockerfile CMD).
+    AgentCore 가 invoke 시 자동으로 ``@app.entrypoint`` 함수 호출. Operator 진입점은
+    ``invoke_runtime.py`` — boto3 ``invoke_agent_runtime`` (SigV4) 호출.
 
 payload 스키마:
     {"query": "<자연어 운영자 질의>"}
 
 yield 스키마 (SSE):
-    - ``agent_text_stream`` — LLM streaming chunk (final JSON)
-    - ``token_usage`` — usage 누적 metrics
+    - ``agent_text_stream`` — LLM streaming text chunk (sub-agent tool 호출 사이의
+      Supervisor 자체 토큰 + 최종 통합 응답 — system_prompt 가 JSON 형식 요청 시 JSON)
+    - ``token_usage`` — Supervisor LLM 자체의 usage 누적 (sub-agent 의 토큰은 별도
+      집계 — CloudWatch metrics 참조)
     - ``workflow_complete`` — SSE 종료 sentinel
 
 reference:
@@ -58,7 +72,12 @@ from strands import tool
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 
-# 로컬 dev 시 sibling shared/ — sys.path 에 parent 추가. 컨테이너에선 cwd 자동.
+# 로컬 dev 시 ``shared/`` 는 ``agents/supervisor/shared/`` (sibling). sys.path 에
+# parent 추가해야 ``from shared.X import ...`` 이 resolve. container 에서는 build
+# root = ``runtime/`` 가 통째로 ``/app/`` 으로 upload (flatten 아님 — ``shared/`` 는
+# subdir 로 보존; deploy script 가 ``project/agents/supervisor/shared/`` →
+# ``runtime/shared/`` sibling copy 수행). ``-m agentcore_runtime`` 가 cwd 를
+# sys.path 에 자동 추가하므로 container 에선 insert 불필요.
 if (SCRIPT_DIR.parent / "shared").is_dir():
     sys.path.insert(0, str(SCRIPT_DIR.parent))
 
@@ -66,6 +85,11 @@ try:
     from shared.agent import create_supervisor_agent  # 컨테이너
 except ModuleNotFoundError:
     from agents.supervisor.shared.agent import create_supervisor_agent  # 로컬 dev
+
+# DEBUG=1 시 stream event trace (TTFT + message complete + usage).
+# ``_shared_debug/`` 는 repo root sibling — deploy_runtime.py 가 build context 로 copy.
+# 컨테이너에선 /app/_shared_debug/, 로컬에선 PROJECT_ROOT/_shared_debug/ (sys.path 위 양쪽 동일 import).
+from _shared_debug import dump_stream_event  # noqa: E402
 
 REGION = os.environ.get("AWS_REGION", "us-west-2")
 # Option X — 단일 OAuth provider (Client 재사용, Phase 4 incident 와 동일 env 키)
@@ -95,19 +119,20 @@ def _runtime_url(arn: str) -> str:
     provider_name=OAUTH_PROVIDER_NAME,
     scopes=[COGNITO_GATEWAY_SCOPE],            # Phase 2 의 Gateway scope 동일
     auth_flow="M2M",
-    into="bearer_token",
-    # NOTE: force_authentication 미사용 — Phase 6a 는 단일 entrypoint 안에서 sequential
-    # tool 호출 (Strands @tool 패턴) 이라 host_adk_agent reference 의 LazyClientFactory
-    # event-loop 격리 이슈 해당 없음. 기본 cache 활용 (~1시간 유효).
+    into="access_token",                       # Phase 3/4 와 통일 (kwarg 이름)
+    # NOTE: force_authentication 미사용 — 단일 entrypoint = 단일 event-loop → ContextVar
+    # 격리 발생 안 함 (host_adk_agent reference 의 LazyClientFactory 이슈 회피). 기본
+    # cache 활용 — AgentCore Identity 가 Cognito access_token 을 1시간 cache, 매
+    # `@requires_access_token` 진입은 cache hit (Cognito 재호출 0).
 )
-async def _fetch_a2a_token(*, bearer_token: str = "") -> str:
+async def _fetch_a2a_token(*, access_token: str = "") -> str:
     """A2A 호출용 Bearer JWT — Client M2M (Phase 2 재사용).
 
     AgentCore customJWTAuthorizer 가 aud (= Client id) 만 검증하므로 Gateway scope
     토큰이 sub-agent A2A inbound 에도 통과. scope `aiops-demo-${user}-resource-server/
-    invoke` 가 다중 audience 에 사용되는 패턴.
+    invoke` 가 다중 audience 에 사용되는 패턴 (Option X 의 핵심).
     """
-    return bearer_token
+    return access_token
 
 
 async def _call_subagent(arn: str, query: str) -> str:
@@ -193,6 +218,9 @@ async def supervisor(payload: dict, context: Any) -> AsyncGenerator[dict, None]:
         "cacheReadInputTokens": 0, "cacheWriteInputTokens": 0,
     }
     async for event in agent.stream_async(query):
+        # dump_stream_event 가 먼저 — TTFT + message complete + usage trace
+        # (DEBUG off 시 no-op). Phase 3 monitor / Phase 4 incident 와 동일 패턴.
+        dump_stream_event(event, agent=agent)
         data = event.get("data", "")
         if data:
             yield {"type": "agent_text_stream", "text": data}

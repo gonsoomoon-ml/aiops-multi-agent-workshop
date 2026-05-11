@@ -66,11 +66,14 @@ agents/incident/runtime/.bedrock_agentcore.yaml
 # Phase 4: cfn package output
 infra/github-lambda/github_lambda.packaged.yaml
 
-# Phase 6a: agent runtime/ build context (deploy_runtime.py copies shared/ in)
+# Phase 6a: agent runtime/ build context (deploy_runtime.py copies shared/ + _shared_debug/ in)
 agents/monitor_a2a/runtime/shared/
+agents/monitor_a2a/runtime/_shared_debug/
 agents/monitor_a2a/runtime/.bedrock_agentcore.yaml
 agents/incident_a2a/runtime/shared/
 agents/incident_a2a/runtime/incident_shared/
+agents/incident_a2a/runtime/_shared_debug/
 agents/incident_a2a/runtime/.bedrock_agentcore.yaml
 agents/supervisor/runtime/shared/
+agents/supervisor/runtime/_shared_debug/
 agents/supervisor/runtime/.bedrock_agentcore.yaml

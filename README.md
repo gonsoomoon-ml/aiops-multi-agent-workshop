@@ -80,7 +80,7 @@ bash bootstrap.sh
 | **2** | AgentCore Gateway + MCP 도구 외부화 (CloudWatch + history mock Lambda) | [`docs/learn/phase2.md`](docs/learn/phase2.md) | ✅ |
 | **3** | Monitor Agent → AgentCore Runtime 승격 | [`docs/learn/phase3.md`](docs/learn/phase3.md) | ✅ |
 | **4** | Incident Runtime + storage Lambda (`STORAGE_BACKEND=s3` default / `github` 선택) + sequential CLI | [`docs/learn/phase4.md`](docs/learn/phase4.md) | ✅ |
-| **5** | Supervisor + Monitor A2A + Incident A2A — A2A 활성화 (`serve_a2a` + LazyExecutor) | — | 🚧 |
+| **5** | Supervisor + Monitor A2A + Incident A2A — A2A 활성화 (`serve_a2a` + LazyExecutor) | [`docs/learn/phase5.md`](docs/learn/phase5.md) | ✅ |
 | **6** | EC mall 통합 — alarm 추가만으로 동일 시나리오 재현 (외부 의존) | — | 🚧 |
 
 > ✅ = narrative 작성 완료 / 🚧 = 작성 대기 — 미완성 시 `docs/design/phase{N}.md` (의사결정 로그) + 코드 직접 참조.

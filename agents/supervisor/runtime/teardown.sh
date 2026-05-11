@@ -6,14 +6,14 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "${SCRIPT_DIR}/../../.." && pwd)"
 
-# .env 로드: repo root (DEMO_USER + COGNITO_*) → runtime-local (RUNTIME_ID 등 — deploy 가 작성)
+# .env 로드: repo root 단일 (Phase 3/4 second-pass parity — SUPERVISOR_ prefix)
 [ -f "$PROJECT_ROOT/.env" ] && { set -a; source "$PROJECT_ROOT/.env"; set +a; }
-[ -f "${SCRIPT_DIR}/.env" ] && { set -a; source "${SCRIPT_DIR}/.env"; set +a; }
 
 REGION="${AWS_REGION:-us-west-2}"
 DEMO_USER="${DEMO_USER:?DEMO_USER 미설정 (repo root .env 필요)}"
 AGENT_NAME="aiops_demo_${DEMO_USER}_supervisor"
-OAUTH_PROVIDER_NAME="${AGENT_NAME}_gateway_provider"   # Option X — Phase 4 명명 정합 (Client 재사용)
+OAUTH_PROVIDER_NAME="${SUPERVISOR_OAUTH_PROVIDER_NAME:-${AGENT_NAME}_gateway_provider}"   # Option X — Phase 4 명명 정합
+RUNTIME_ID="${SUPERVISOR_RUNTIME_ID:-}"
 ECR_REPO="bedrock-agentcore-${AGENT_NAME}"
 LOG_GROUP="/aws/bedrock-agentcore/runtimes/${AGENT_NAME}"
 
@@ -83,10 +83,10 @@ else
     echo -e "  (Log Group 없음 — skip)"
 fi
 
-if [ -f "${SCRIPT_DIR}/.env" ]; then
-    sed -i.bak '/^RUNTIME_ARN=/d; /^RUNTIME_ID=/d; /^RUNTIME_NAME=/d; /^OAUTH_PROVIDER_NAME=/d; /^SUPERVISOR_RUNTIME_ARN=/d; /^# Phase 6a Runtime/d' "${SCRIPT_DIR}/.env"
-    rm -f "${SCRIPT_DIR}/.env.bak"
-    echo -e "  ${GREEN}✓ ${SCRIPT_DIR}/.env cleanup${NC}"
+if [ -f "${PROJECT_ROOT}/.env" ]; then
+    sed -i.bak '/^SUPERVISOR_RUNTIME_NAME=/d; /^SUPERVISOR_RUNTIME_ARN=/d; /^SUPERVISOR_RUNTIME_ID=/d; /^SUPERVISOR_OAUTH_PROVIDER_NAME=/d; /^# Phase 5 — Supervisor Runtime/d' "${PROJECT_ROOT}/.env"
+    rm -f "${PROJECT_ROOT}/.env.bak"
+    echo -e "  ${GREEN}✓ repo root .env 의 Phase 5 (SUPERVISOR_) entry cleanup${NC}"
 fi
 
 echo -e "${YELLOW}[verify] sub-agent Runtime 보존 검증${NC}"

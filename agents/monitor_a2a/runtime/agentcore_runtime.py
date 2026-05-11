@@ -22,14 +22,41 @@ Phase 4 monitor/shared/ 직접 재사용 (Option G — 2026-05-09):
   - 컨테이너: deploy_runtime.py 가 agents/monitor/shared 를 runtime/shared 로 copy
   - 로컬 dev: agents.monitor.shared.* 직접 import
 
-사전 조건 (Runtime 환경변수):
+DEBUG mode (Phase 3/4 parity):
+  - Phase 4 monitor/shared/agent.py 가 ``FlowHook(agent_name="Monitor")`` 를
+    is_debug() 시점에 등록 — Option G 로 transitive 활성 (별도 코드 추가 0).
+  - deploy_runtime.py 가 ``_shared_debug/`` 를 build context 로 copy + ``DEBUG`` env
+    forward. ``DEBUG=1`` 재배포 시 CloudWatch logs 에 FlowHook + TTFT + usage trace.
+  - dump_stream_event 직접 호출 부재 — A2A protocol 의 stream loop 는 StrandsA2AExecutor
+    내부 (우리가 소유 X). FlowHook 의 BeforeModel + AfterModel + BeforeTool 만으로
+    충분 (delta-based messages dump + LLM duration + tool 호출 가시화).
+
+사전 조건 (Runtime 환경변수, deploy_runtime.py 가 launch 시 OS env 직접 주입):
     - GATEWAY_URL: Phase 2 Gateway endpoint
     - OAUTH_PROVIDER_NAME: Monitor A2A OAuth provider 이름 (Gateway 호출용 Client M2M)
     - COGNITO_GATEWAY_SCOPE: Cognito Resource Server scope
     - MONITOR_MODEL_ID: Bedrock model ID
     - DEMO_USER: live mode query 의 ``payment-{user}-*`` prefix 채움
+    - DEBUG — '1' / 'true' 시 FlowHook trace 출력 (Phase 4 shared/agent.py 가 등록)
     - AGENTCORE_RUNTIME_URL: AgentCore 자동 주입
     - OTEL_RESOURCE_ATTRIBUTES, AGENT_OBSERVABILITY_ENABLED
+
+Runtime 환경변수는 ``Runtime.launch(env_vars=...)`` 가 OS env 로 직접 주입 — .env
+로딩 불필요 (python-dotenv 의존 제거). 로컬 dev 시는 호출 측에서 .env 로딩.
+
+사용법:
+    Runtime 컨테이너 안에서 ``python -m agentcore_runtime`` 으로 실행 (Dockerfile CMD).
+    ``serve_a2a`` 가 port 9000 에 A2A protocol endpoint 노출 — caller (Supervisor) 가
+    A2AClient 로 send_message. 로컬 단독 실행은 비대상 (A2A inbound = Supervisor 만).
+
+payload 스키마 (A2A Message text part):
+    자연어 query (예: ``"현재 라이브 알람 분류해줘"``). LLM 이 ``system_prompt_live.md``
+    의 분류 정책 따라 ``payment-{DEMO_USER}-*`` prefix alarm 만 real vs noise 분류.
+
+response 스키마 (A2A Message artifact):
+    LLM 의 최종 분류 결과 (자연어). caller 가 ``artifact.parts[0].root.text`` 추출 →
+    Supervisor LLM 이 sub-agent 응답으로 받음. token usage 는 별도 yield 없음 — A2A
+    protocol 이 SSE event 모델 미사용 (StrandsA2AExecutor 가 stream 내부 처리).
 
 reference:
     - https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/runtime-a2a.html
@@ -49,9 +76,12 @@ from strands.multiagent.a2a.executor import StrandsA2AExecutor
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 
-# Phase 4 monitor/shared/ 직접 재사용 (Option G).
-# 컨테이너: deploy_runtime.py 가 agents/monitor/shared 를 runtime/shared 로 copy.
-# 로컬 dev: agents.monitor.shared.* 직접 import.
+# Phase 4 monitor/shared/ 직접 재사용 (Option G — 2026-05-09).
+# - 컨테이너: deploy_runtime.py 가 agents/monitor/shared → runtime/shared 로 copy,
+#   ``_shared_debug/`` 도 sibling copy. build root = ``runtime/`` 가 통째로 ``/app/``
+#   으로 upload (flatten 아님 — ``shared/`` + ``_shared_debug/`` 는 subdir 보존).
+#   ``-m agentcore_runtime`` 가 cwd (=/app/) 를 sys.path 에 자동 추가 → 추가 insert 불필요.
+# - 로컬 dev: agents.monitor.shared.* 직접 import (PROJECT_ROOT cwd 가정).
 if (SCRIPT_DIR / "shared").is_dir():
     sys.path.insert(0, str(SCRIPT_DIR))
 

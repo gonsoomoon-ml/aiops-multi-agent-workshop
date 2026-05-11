@@ -20,16 +20,16 @@ Phase 4 incident `deploy_runtime.py` 와 다른 점 (Option X):
 사전 조건:
     - Phase 0/2/3/4 deploy 완료 (Phase 2 Client 존재 — repo .env)
     - monitor_a2a + incident_a2a Runtime 모두 deploy 완료
-      → 각 .env 에 MONITOR_A2A_RUNTIME_ARN / INCIDENT_A2A_RUNTIME_ARN 작성됨
+      → repo `.env` 에 MONITOR_A2A_RUNTIME_ARN / INCIDENT_A2A_RUNTIME_ARN 작성됨
     - repo `.env` 에 COGNITO_CLIENT_ID, COGNITO_CLIENT_SECRET (Phase 2 산출물)
 
 수행 단계:
-    1. supervisor/shared → 빌드 컨텍스트 복사
-    2. sub-agent ARN cross-load (2개의 runtime/.env 에서 — monitor_a2a + incident_a2a)
+    1. supervisor/shared + _shared_debug → 빌드 컨텍스트 복사 (Phase 3/4 parity)
+    2. sub-agent ARN read (repo root .env 의 prefixed key 직접 — single .env 패턴)
     3. Runtime.configure(protocol="HTTP")  — authorizer 미설정 = SigV4 default
-    4. Runtime.launch
+    4. Runtime.launch (호스트 DEBUG env forward — '1' / 'true' 시 FlowHook 활성)
     5. IAM ``SupervisorRuntimeExtras`` + OAuth provider (Phase 2 Client 재사용)
-    6. READY 대기 + runtime/.env 저장
+    6. READY 대기 + repo root .env 갱신 (SUPERVISOR_ prefix)
 """
 import json
 import os
@@ -63,32 +63,40 @@ OAUTH_PROVIDER_NAME = f"{AGENT_NAME}_gateway_provider"
 
 
 def copy_shared_into_build_context() -> None:
-    """[1/6] supervisor/shared → build context."""
-    print(f"{YELLOW}[1/6] shared/ 를 빌드 컨텍스트로 복사 중...{NC}")
-    shared_src = PROJECT_ROOT / "agents" / "supervisor" / "shared"
-    shared_dst = SCRIPT_DIR / "shared"
-    if shared_dst.exists():
-        shutil.rmtree(shared_dst)
-    shutil.copytree(shared_src, shared_dst, ignore=shutil.ignore_patterns("__pycache__"))
-    print(f"{GREEN}  ✅ supervisor/shared → runtime/shared/{NC}\n")
+    """[1/6] supervisor/shared + _shared_debug → build context.
+
+    빌드 컨텍스트 밖 참조 불가 → sibling 배치. container 안에선 ``/app/shared/`` +
+    ``/app/_shared_debug/`` 로 import 가능 (cwd sys.path). ``_shared_debug`` 는 Phase 3/4
+    parity — supervisor/shared/agent.py 가 ``FlowHook`` / ``dprint_box`` / ``is_debug`` 차용.
+    """
+    print(f"{YELLOW}[1/6] shared/ + _shared_debug/ 를 빌드 컨텍스트로 복사 중...{NC}")
+    for src, dst in [
+        (PROJECT_ROOT / "agents" / "supervisor" / "shared", SCRIPT_DIR / "shared"),
+        (PROJECT_ROOT / "_shared_debug", SCRIPT_DIR / "_shared_debug"),
+    ]:
+        if not src.exists():
+            print(f"{RED}❌ {src.name}/ 미발견: {src}{NC}")
+            sys.exit(1)
+        if dst.exists():
+            shutil.rmtree(dst)
+        shutil.copytree(src, dst, ignore=shutil.ignore_patterns("__pycache__"))
+        print(f"{GREEN}  ✅ {src.relative_to(PROJECT_ROOT)} → {dst.relative_to(PROJECT_ROOT)}{NC}")
+    print()
 
 
 def load_subagent_arns() -> dict:
-    """[2/6] sub-agent ARN cross-load — monitor_a2a + incident_a2a 의 runtime/.env."""
-    print(f"{YELLOW}[2/6] sub-agent Runtime ARN cross-load 중...{NC}")
+    """[2/6] sub-agent Runtime ARN read — root .env 의 prefixed key 직접 (single .env 패턴).
+
+    monitor_a2a / incident_a2a deploy 가 각자 save_runtime_metadata 에서 root .env 에
+    ``MONITOR_A2A_RUNTIME_ARN`` / ``INCIDENT_A2A_RUNTIME_ARN`` 으로 저장한 값을 read.
+    Phase 3/4 second-pass 와 동일 single-source-of-truth.
+    """
+    print(f"{YELLOW}[2/6] sub-agent Runtime ARN read (root .env)...{NC}")
     arns = {}
-    sources = [
-        ("MONITOR_A2A_RUNTIME_ARN", PROJECT_ROOT / "agents" / "monitor_a2a" / "runtime" / ".env"),
-        ("INCIDENT_A2A_RUNTIME_ARN", PROJECT_ROOT / "agents" / "incident_a2a" / "runtime" / ".env"),
-    ]
-    for key, env_path in sources:
-        if not env_path.exists():
-            print(f"{RED}❌ {env_path} 미발견 — 해당 sub-agent deploy 선행 필요{NC}")
-            sys.exit(1)
-        load_dotenv(env_path, override=False)            # cross-agent ARN 만 추가
+    for key in ("MONITOR_A2A_RUNTIME_ARN", "INCIDENT_A2A_RUNTIME_ARN"):
         arn = os.environ.get(key)
         if not arn:
-            print(f"{RED}❌ {key} 미설정 in {env_path}{NC}")
+            print(f"{RED}❌ {key} 미설정 in {PROJECT_ROOT}/.env — 해당 sub-agent deploy 선행 필요{NC}")
             sys.exit(1)
         arns[key] = arn
         print(f"  ✅ {key} = {arn}")
@@ -124,7 +132,15 @@ def configure_runtime():
 def launch_runtime(runtime, subagent_arns: dict):
     """[4/6] Docker 빌드 → ECR push → Runtime 생성. sub-agent ARN env 주입."""
     print(f"{YELLOW}[4/6] Runtime 배포 중...{NC}")
-    print(f"   ⏳ 첫 배포 ~5-10분, 업데이트 ~40초\n")
+    print(f"   ⏳ 첫 배포 ~5-10분, 업데이트 ~40초")
+
+    debug_val = os.environ.get("DEBUG", "")
+    if debug_val:
+        print(f"   {GREEN}ℹ DEBUG={debug_val} 활성 — container 에 forward (FlowHook + trace 출력){NC}")
+        print(f"     로그 확인: aws logs tail /aws/bedrock-agentcore/runtimes/<SUPERVISOR_RUNTIME_ID>-DEFAULT --follow --region {REGION}")
+    else:
+        print(f"   {YELLOW}ℹ DEBUG 비활성 — trace 미출력. 활성화하려면 'DEBUG=1 uv run …' 재배포{NC}")
+    print()
 
     env_vars = {
         # Phase 4 incident 와 동일 키 (단일 OAuth provider 명명).
@@ -138,6 +154,8 @@ def launch_runtime(runtime, subagent_arns: dict):
         "OTEL_RESOURCE_ATTRIBUTES": f"service.name={AGENT_NAME}",
         "AGENT_OBSERVABILITY_ENABLED": "true",
         "DEMO_USER": DEMO_USER,
+        # 호스트 DEBUG 값 그대로 forward — 미설정/empty 면 container 에서도 off (is_debug() = False)
+        "DEBUG": debug_val,
     }
 
     start_time = datetime.now()
@@ -247,30 +265,34 @@ def wait_until_ready(launch_result) -> None:
 
 
 def save_runtime_metadata(launch_result) -> None:
-    """[6/6 의 일부] runtime/.env 저장."""
-    print(f"{YELLOW}[6/6] runtime/.env 저장 중...{NC}")
-    env_file = SCRIPT_DIR / ".env"
+    """[6/6 의 일부] Runtime metadata 를 ``repo root .env`` 에 저장 (SUPERVISOR_ prefix).
+
+    Phase 3/4 second-pass 와 동일 패턴. invoke_runtime.py / teardown.sh 가 같은 파일에서 read.
+    """
+    print(f"{YELLOW}[6/6] Runtime 정보를 repo root .env 에 저장 중...{NC}")
+    env_file = PROJECT_ROOT / ".env"
     if env_file.exists():
         with open(env_file, "r") as f:
             lines = [
                 line for line in f.readlines()
-                if not line.startswith(("RUNTIME_ARN=", "RUNTIME_ID=", "RUNTIME_NAME=",
-                                       "OAUTH_PROVIDER_NAME=", "SUPERVISOR_RUNTIME_ARN="))
-                and not line.strip().startswith("# Phase 6a Runtime")
+                if not line.startswith(("SUPERVISOR_RUNTIME_NAME=",
+                                        "SUPERVISOR_RUNTIME_ARN=",
+                                        "SUPERVISOR_RUNTIME_ID=",
+                                        "SUPERVISOR_OAUTH_PROVIDER_NAME="))
+                and not line.strip().startswith("# Phase 5 — Supervisor Runtime")
             ]
     else:
         lines = []
 
-    lines.append(f"\n# Phase 6a Runtime ({datetime.now().strftime('%Y-%m-%d')})\n")
-    lines.append(f"RUNTIME_NAME={AGENT_NAME}\n")
-    lines.append(f"RUNTIME_ARN={launch_result.agent_arn}\n")
-    lines.append(f"RUNTIME_ID={launch_result.agent_id}\n")
-    lines.append(f"OAUTH_PROVIDER_NAME={OAUTH_PROVIDER_NAME}\n")
+    lines.append(f"\n# Phase 5 — Supervisor Runtime ({datetime.now().strftime('%Y-%m-%d')})\n")
+    lines.append(f"SUPERVISOR_RUNTIME_NAME={AGENT_NAME}\n")
     lines.append(f"SUPERVISOR_RUNTIME_ARN={launch_result.agent_arn}\n")
+    lines.append(f"SUPERVISOR_RUNTIME_ID={launch_result.agent_id}\n")
+    lines.append(f"SUPERVISOR_OAUTH_PROVIDER_NAME={OAUTH_PROVIDER_NAME}\n")
 
     with open(env_file, "w") as f:
         f.writelines(lines)
-    print(f"{GREEN}✅ runtime/.env 저장 완료{NC}\n")
+    print(f"{GREEN}✅ repo root .env 갱신 완료 (SUPERVISOR_ prefix){NC}\n")
 
 
 def print_summary(launch_result) -> None:
@@ -283,6 +305,11 @@ def print_summary(launch_result) -> None:
     print(f"   OAuth Provider:      {OAUTH_PROVIDER_NAME}  (Phase 2 Client 재사용)")
     print(f"   Inbound:             HTTP, SigV4 IAM (Operator CLI 가 boto3 호출)")
     print(f"   Outbound:            A2A → 2 sub-agents (Client M2M Bearer)")
+    debug_val = os.environ.get("DEBUG", "")
+    if debug_val:
+        print(f"   DEBUG 모드:          {GREEN}ACTIVE{NC} (CloudWatch logs 에 FlowHook trace 출력)")
+    else:
+        print(f"   DEBUG 모드:          비활성 (trace 보려면 'DEBUG=1 uv run …' 재배포)")
     print()
     print(f"   다음 단계:")
     print(f"   1. Supervisor 단독 invoke (admin SIGV4 디버깅):")
