@@ -117,7 +117,7 @@ wheels = [
 ]
 
 [[package]]
-name = "aiops-multi-agent-demo"
+name = "aiops-multi-agent-workshop"
 version = "0.1.0"
 source = { virtual = "." }
 dependencies = [

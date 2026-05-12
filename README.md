@@ -1,4 +1,4 @@
-# AIOps Multi-Agent Demo
+# AIOps Multi-Agent Workshop
 
 > AWS Bedrock AgentCore Runtime + Strands + A2A 프로토콜 기반 AIOps 멀티에이전트 워크샵.
 > CloudWatch alarm → 운영자 query → Supervisor (LLM orchestrator) → Monitor / Incident sub-agent (A2A) → 통합 진단 JSON.
@@ -100,15 +100,15 @@ bash bootstrap.sh
 
 각 phase 의 narrative 는 `docs/learn/phase{N}.md`. **순서대로** 읽고 해당 phase 의 deploy 명령 실행. 각 narrative 에 "무엇 (what it is)" + "어떻게 동작 (how it works)" + 검증 (P{N}-A1~A5) 포함.
 
-| Phase | 핵심 산출물 | Narrative | 상태 |
-|-------|---|---|---|
-| **0** | EC2 시뮬레이터 + CloudWatch alarm 2종 (real + noise) + 카오스 스크립트 | [`docs/learn/phase0.md`](docs/learn/phase0.md) | ✅ |
-| **1** | 로컬 Monitor Agent (Strands) + 3가지 진단 유형 (Rule 폐기 / Threshold 상향 / Time window 제외) | [`docs/learn/phase1.md`](docs/learn/phase1.md) | ✅ |
-| **2** | AgentCore Gateway + MCP 도구 외부화 (CloudWatch + history mock Lambda) | [`docs/learn/phase2.md`](docs/learn/phase2.md) | ✅ |
-| **3** | Monitor Agent → AgentCore Runtime 승격 | [`docs/learn/phase3.md`](docs/learn/phase3.md) | ✅ |
-| **4** | Incident Runtime + storage Lambda (`STORAGE_BACKEND=s3` default / `github` 선택) + sequential CLI | [`docs/learn/phase4.md`](docs/learn/phase4.md) | ✅ |
-| **5** | Supervisor + Monitor A2A + Incident A2A — A2A 활성화 (`serve_a2a` + LazyExecutor) | [`docs/learn/phase5.md`](docs/learn/phase5.md) | ✅ |
-| **6** | EC mall 통합 — alarm 추가만으로 동일 시나리오 재현 (외부 의존) | — | 🚧 |
+| Phase | 이름 | 핵심 산출물 | Narrative | 예상 소요 | 상태 |
+|-------|---|---|---|---|---|
+| **0** | 기반 인프라 | EC2 시뮬레이터 + CloudWatch alarm 2종 (real + noise) + 카오스 스크립트 | [`docs/learn/phase0.md`](docs/learn/phase0.md) | 30 분 | ✅ |
+| **1** | Strands Agent (local, mock) | 로컬 Monitor Agent (Strands) + 3가지 진단 유형 (Rule 폐기 / Threshold 상향 / Time window 제외) | [`docs/learn/phase1.md`](docs/learn/phase1.md) | 40 분 | ✅ |
+| **2** | AgentCore Gateway + MCP + Debug mode | AgentCore Gateway + MCP 도구 외부화 (CloudWatch + history mock Lambda) + FlowHook 기반 Debug trace (DEBUG=1) | [`docs/learn/phase2.md`](docs/learn/phase2.md) | 60 분 | ✅ |
+| **3** | AgentCore Runtime — Monitor | Monitor Agent → AgentCore Runtime 승격 | [`docs/learn/phase3.md`](docs/learn/phase3.md) | 60 분 | ✅ |
+| **4** | AgentCore Runtime — Incident + Storage | Incident Runtime + storage Lambda (`STORAGE_BACKEND=s3` default / `github` 선택) + sequential CLI | [`docs/learn/phase4.md`](docs/learn/phase4.md) | 60 분 | ✅ |
+| **5** | AgentCore A2A — Supervisor + 2 sub-agents | Supervisor + Monitor A2A + Incident A2A — A2A 활성화 (`serve_a2a` + LazyExecutor) | [`docs/learn/phase5.md`](docs/learn/phase5.md) | 90 분 | ✅ |
+| **6** | EC Mall 통합 | EC mall 통합 — alarm 추가만으로 동일 시나리오 재현 (외부 의존) | — | — | 🚧 |
 
 > ✅ = narrative 작성 완료 / 🚧 = 작성 대기 — 미완성 시 `docs/design/phase{N}.md` (의사결정 로그) + 코드 직접 참조.
 
