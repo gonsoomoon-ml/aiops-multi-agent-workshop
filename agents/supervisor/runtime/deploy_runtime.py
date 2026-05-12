@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-deploy_runtime.py — Phase 6a Supervisor Agent AgentCore Runtime 배포 (HTTP)
+deploy_runtime.py — Phase 5 Supervisor Agent AgentCore Runtime 배포 (HTTP)
 
 Phase 4 incident `deploy_runtime.py` 와 다른 점 (Option X):
   - **agent_name = ``aiops_demo_${DEMO_USER}_supervisor``**
@@ -321,7 +321,7 @@ def print_summary(launch_result) -> None:
 
 def main() -> None:
     print(f"\n{BLUE}{'=' * 60}{NC}")
-    print(f"{BLUE}  Phase 6a — Supervisor Agent AgentCore Runtime 배포{NC}")
+    print(f"{BLUE}  Phase 5 — Supervisor Agent AgentCore Runtime 배포{NC}")
     print(f"{BLUE}{'=' * 60}{NC}\n")
 
     copy_shared_into_build_context()

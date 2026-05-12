@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# teardown.sh — Phase 6a Incident A2A Runtime + 의존 자원 reverse 순서 삭제.
+# teardown.sh — Phase 5 Incident A2A Runtime + 의존 자원 reverse 순서 삭제.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -18,7 +18,7 @@ LOG_GROUP="/aws/bedrock-agentcore/runtimes/${AGENT_NAME}"
 
 GREEN='\033[0;32m'; YELLOW='\033[1;33m'; RED='\033[0;31m'; NC='\033[0m'
 
-echo -e "${YELLOW}=== Phase 6a Incident A2A teardown — ${AGENT_NAME} ===${NC}"
+echo -e "${YELLOW}=== Phase 5 Incident A2A teardown — ${AGENT_NAME} ===${NC}"
 
 RUNTIME_ID="${RUNTIME_ID:-$(aws bedrock-agentcore-control list-agent-runtimes --region "$REGION" \
     --query "agentRuntimes[?agentRuntimeName=='${AGENT_NAME}'].agentRuntimeId" --output text 2>/dev/null || echo '')}"
@@ -95,4 +95,4 @@ INCIDENT_HTTP_ID=$(aws bedrock-agentcore-control list-agent-runtimes --region "$
     && echo -e "  ${GREEN}✓ incident (HTTP) Runtime 보존 (${INCIDENT_HTTP_ID})${NC}" \
     || echo -e "  - incident (HTTP) Runtime 미존재 (이미 정리되었거나 미배포)"
 
-echo -e "${GREEN}=== ✅ Phase 6a Incident A2A teardown 완료 ===${NC}"
+echo -e "${GREEN}=== ✅ Phase 5 Incident A2A teardown 완료 ===${NC}"

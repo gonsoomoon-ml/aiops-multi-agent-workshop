@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-deploy_runtime.py — Phase 6a Monitor A2A AgentCore Runtime 배포
+deploy_runtime.py — Phase 5 Monitor A2A AgentCore Runtime 배포
 
 Phase 4 ``agents/monitor/runtime/deploy_runtime.py`` 와 동일 5-step 흐름. 차이점:
   - **agent_name = ``aiops_demo_${DEMO_USER}_monitor_a2a``** (Phase 4 monitor 와 별 Runtime)
@@ -322,7 +322,7 @@ def print_summary(launch_result) -> None:
 
 def main() -> None:
     print(f"\n{BLUE}{'=' * 60}{NC}")
-    print(f"{BLUE}  Phase 6a — Monitor A2A AgentCore Runtime 배포{NC}")
+    print(f"{BLUE}  Phase 5 — Monitor A2A AgentCore Runtime 배포{NC}")
     print(f"{BLUE}{'=' * 60}{NC}\n")
 
     copy_shared_into_build_context()

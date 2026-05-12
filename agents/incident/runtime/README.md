@@ -88,4 +88,4 @@ agents/incident/runtime/         ← Docker build context
 
 ## A2A 미사용 (Phase 4 D2)
 
-Phase 4 는 **sequential CLI 패턴** — Monitor `invoke_runtime.py --sequential` 가 두 Runtime 을 boto3 SIGV4 로 순차 호출. A2A 프로토콜 (server `A2AStarletteApplication` + caller `RemoteA2aAgent`) 은 Phase 6a 통합 활성화 (`docs/design/resource.md` §1 line 13-14 정렬). 자세한 정당화: `docs/design/phase4.md` §5.
+Phase 4 는 **sequential CLI 패턴** — Monitor `invoke_runtime.py --sequential` 가 두 Runtime 을 boto3 SIGV4 로 순차 호출. A2A 프로토콜 (server `A2AStarletteApplication` + caller `RemoteA2aAgent`) 은 Phase 5 통합 활성화 (`docs/design/resource.md` §1 line 13-14 정렬). 자세한 정당화: `docs/design/phase4.md` §5.

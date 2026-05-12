@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-agentcore_runtime.py — Phase 6a Incident A2A Runtime 진입점 (AWS canonical pattern)
+agentcore_runtime.py — Phase 5 Incident A2A Runtime 진입점 (AWS canonical pattern)
 
 AWS docs 의 `serve_a2a(StrandsA2AExecutor(agent))` 패턴 정확 차용. monitor_a2a 와 동일
 LazyExecutor 패턴 — module init 시 placeholder agent, 첫 request 시 real agent 빌드.

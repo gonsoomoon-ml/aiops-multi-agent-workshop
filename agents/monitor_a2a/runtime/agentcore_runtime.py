@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-agentcore_runtime.py — Phase 6a Monitor A2A Runtime 진입점 (AWS canonical pattern)
+agentcore_runtime.py — Phase 5 Monitor A2A Runtime 진입점 (AWS canonical pattern)
 
 AWS docs 의 `agentcore create --protocol A2A` CLI 가 scaffolding 하는 정확한 패턴 차용:
 **`serve_a2a(StrandsA2AExecutor(agent))`**. AgentCore SDK 의 `serve_a2a` 가:
@@ -103,7 +103,7 @@ AGENT_DESC = (
     "real (유효) vs noise (개선) 식별"
 )
 
-# Phase 6a Monitor A2A = live mode 전용. past mode 는 Phase 4 monitor (HTTP) 가 처리.
+# Phase 5 Monitor A2A = live mode 전용. past mode 는 Phase 4 monitor (HTTP) 가 처리.
 MODE = "live"
 TARGET_PREFIX, PROMPT_FILENAME = MODE_CONFIG[MODE]
 

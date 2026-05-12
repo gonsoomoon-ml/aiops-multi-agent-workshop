@@ -1,4 +1,4 @@
-# Phase 6a Incident A2A build context exclusion
+# Phase 5 Incident A2A build context exclusion
 __pycache__/
 *.pyc
 .pytest_cache/

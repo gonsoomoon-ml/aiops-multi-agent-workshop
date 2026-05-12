@@ -3,7 +3,7 @@
 Strands `Agent` 에 `sub_agents` 파라미터 자체 없음 — sub-agent 호출은 *도구로 노출* 하는
 패턴 (research 확인). 따라서 Supervisor 도 `tools=` 시그니처. caller (runtime/
 agentcore_runtime.py) 가 `@tool` 함수 2개 (call_monitor_a2a, call_incident_a2a) 를 주입.
-Change Agent 는 후속 phase 로 연기 — Phase 6a 의 핵심 메시지 (A2A activation) 에 집중.
+Change Agent 는 후속 phase 로 연기 — Phase 5 의 핵심 메시지 (A2A activation) 에 집중.
 
 Phase 3 monitor + Phase 4 incident 와 동일 second-pass parity:
   - Bedrock prompt caching (cache_tools + cachePoint) — tool schema + system prompt 캐시
@@ -36,7 +36,7 @@ def create_supervisor_agent(
 
     Args:
         tools: caller 가 주입하는 @tool 함수 list.
-            Phase 6a = [call_monitor_a2a, call_incident_a2a] —
+            Phase 5 = [call_monitor_a2a, call_incident_a2a] —
             각 tool 이 a2a.client.A2AClient.send_message() 호출을 wrap.
         system_prompt_filename: ``prompts/`` 안의 파일명 — routing 정책 정의.
     """

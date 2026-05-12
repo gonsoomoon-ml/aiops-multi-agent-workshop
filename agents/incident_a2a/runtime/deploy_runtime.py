@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-deploy_runtime.py — Phase 6a Incident A2A AgentCore Runtime 배포
+deploy_runtime.py — Phase 5 Incident A2A AgentCore Runtime 배포
 
 Phase 4 ``agents/incident/runtime/deploy_runtime.py`` 와 동일 5-step 흐름. 차이점:
   - **agent_name = ``aiops_demo_${DEMO_USER}_incident_a2a``** (Phase 4 incident 와 별 Runtime)
@@ -16,7 +16,7 @@ Phase 4 ``agents/incident/runtime/deploy_runtime.py`` 와 동일 5-step 흐름. 
 사전 조건:
     - Phase 0/2/3/4 deploy 완료 (Phase 2 산출물 COGNITO_CLIENT_ID 가 .env 에 존재)
     - Phase 4 monitor/shared + incident/shared + _shared_debug 존재 (build context source)
-    - (Phase 6a Option X — 새 Cognito 자원 추가 0)
+    - (Phase 5 Option X — 새 Cognito 자원 추가 0)
 """
 import json
 import os
@@ -315,7 +315,7 @@ def print_summary(launch_result) -> None:
 
 def main() -> None:
     print(f"\n{BLUE}{'=' * 60}{NC}")
-    print(f"{BLUE}  Phase 6a — Incident A2A AgentCore Runtime 배포{NC}")
+    print(f"{BLUE}  Phase 5 — Incident A2A AgentCore Runtime 배포{NC}")
     print(f"{BLUE}{'=' * 60}{NC}\n")
 
     copy_shared_into_build_context()

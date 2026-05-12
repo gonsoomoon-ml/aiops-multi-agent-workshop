@@ -1,4 +1,4 @@
-# Phase 6a Supervisor build context exclusion
+# Phase 5 Supervisor build context exclusion
 __pycache__/
 *.pyc
 .pytest_cache/

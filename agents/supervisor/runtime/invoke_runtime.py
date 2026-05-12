@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """
-invoke_runtime.py — Phase 6a Supervisor 호출 진입점 (SigV4 IAM)
+invoke_runtime.py — Phase 5 Supervisor 호출 진입점 (SigV4 IAM)
 
 워크샵 청중 (운영자) + admin 통합 진입점. Phase 4 의 monitor/incident
-``invoke_runtime.py`` 와 동일 패턴 — SigV4 IAM 자동 서명. Phase 6a Option X 에서
+``invoke_runtime.py`` 와 동일 패턴 — SigV4 IAM 자동 서명. Phase 5 Option X 에서
 Supervisor 는 customJWTAuthorizer 미설정 → SigV4 default 로 정상 동작.
 
 호출 흐름:
@@ -42,6 +42,9 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 PROJECT_ROOT = SCRIPT_DIR.parents[2]
 load_dotenv(PROJECT_ROOT / ".env")
 
+sys.path.insert(0, str(PROJECT_ROOT))
+from _shared_debug import dprint  # noqa: E402
+
 REGION = os.getenv("AWS_REGION", "us-west-2")
 RUNTIME_ARN = os.getenv("SUPERVISOR_RUNTIME_ARN")
 
@@ -51,14 +54,29 @@ GREEN, YELLOW, BLUE, RED, DIM, NC = (
 
 
 def parse_args() -> argparse.Namespace:
-    """CLI 인자 — `--query <자연어 운영자 질의>`."""
-    parser = argparse.ArgumentParser(description="Phase 6a Supervisor admin invoke (SigV4)")
+    """CLI 인자 — `--query <자연어 운영자 질의>` + `--session-id <UUID>`."""
+    parser = argparse.ArgumentParser(description="Phase 5 Supervisor admin invoke (SigV4)")
     parser.add_argument(
         "--query",
         default="현재 상황 진단해줘",
         help="자연어 운영자 질의 (default: '현재 상황 진단해줘')",
     )
-    return parser.parse_args()
+    parser.add_argument(
+        "--session-id",
+        default=None,
+        help=(
+            "동일 ID 로 재호출 시 Supervisor + sub-agent 모두 warm container 재사용 → TTFT 단축. "
+            "AgentCore 제약: 최소 33자 (UUID hex 32자 + prefix 권장 — `workshop-$(uuidgen | tr -d -)`). "
+            "생략 시 매 invoke 새 microVM (cold). Phase 3 monitor invoke_runtime 와 동일 패턴."
+        ),
+    )
+    args = parser.parse_args()
+    if args.session_id and len(args.session_id) < 33:
+        parser.error(
+            f"--session-id 길이 {len(args.session_id)} — AgentCore 제약 최소 33자. "
+            f"예: workshop-$(uuidgen | tr -d -)  # → 41자"
+        )
+    return args
 
 
 def parse_sse_event(line_bytes: bytes) -> dict | None:
@@ -81,9 +99,11 @@ def main() -> None:
         sys.exit(1)
 
     print(f"{BLUE}{'=' * 60}{NC}")
-    print(f"  Phase 6a Operator → Supervisor (SigV4)")
+    print(f"  Phase 5 Operator → Supervisor (SigV4)")
     print(f"  Query: {args.query}")
     print(f"  Runtime ARN: {RUNTIME_ARN}")
+    if args.session_id:
+        print(f"  Session ID:  {args.session_id} (warm container 재사용 시도)")
     print(f"{BLUE}{'=' * 60}{NC}\n")
 
     config = Config(connect_timeout=300, read_timeout=600, retries={"max_attempts": 0})
@@ -91,25 +111,48 @@ def main() -> None:
 
     payload = {"query": args.query}
 
+    print(f"{YELLOW}📤 Supervisor 호출 중 — LLM 첫 토큰까지 ~10-15초 소요 가능{NC}\n")
+    invoke_kwargs = {
+        "agentRuntimeArn": RUNTIME_ARN,
+        "qualifier": "DEFAULT",
+        "runtimeUserId": os.getenv("DEMO_USER", "ubuntu"),
+        "payload": json.dumps(payload),
+    }
+    if args.session_id:
+        invoke_kwargs["runtimeSessionId"] = args.session_id
+
     start = datetime.now()
-    response = client.invoke_agent_runtime(
-        agentRuntimeArn=RUNTIME_ARN,
-        qualifier="DEFAULT",
-        runtimeUserId=os.getenv("DEMO_USER", "ubuntu"),
-        payload=json.dumps(payload),
-    )
+    response = client.invoke_agent_runtime(**invoke_kwargs)
+    dprint("HTTP response 도착", f"{(datetime.now() - start).total_seconds():.2f}s", color="blue")
 
     content_type = response.get("contentType", "")
     if "text/event-stream" in content_type:
         usage_summary = None
+        first_byte_ts = first_text_ts = None
         for line in response["response"].iter_lines(chunk_size=1):
+            if first_byte_ts is None:
+                first_byte_ts = datetime.now()
+                dprint("first SSE byte (TTFT)", f"{(first_byte_ts - start).total_seconds():.2f}s", color="cyan")
             event = parse_sse_event(line)
             if event is None:
                 continue
             etype = event.get("type")
             if etype == "agent_text_stream":
+                if first_text_ts is None:
+                    first_text_ts = datetime.now()
+                    dprint("first text token", f"{(first_text_ts - start).total_seconds():.2f}s", color="green")
                 print(event.get("text", ""), end="", flush=True)
+            elif etype == "tool_call_begin":
+                tool = event.get("tool", "")
+                inp_str = json.dumps(event.get("input", {}), ensure_ascii=False)
+                inp_preview = inp_str if len(inp_str) <= 80 else inp_str[:77] + "..."
+                elapsed = (datetime.now() - start).total_seconds()
+                print(f"\n{DIM}  🔧 {tool}({inp_preview}) — {elapsed:.1f}s{NC}", flush=True)
+            elif etype == "tool_call_end":
+                elapsed = (datetime.now() - start).total_seconds()
+                print(f"{DIM}  ✅ tool 응답 도착 — {elapsed:.1f}s{NC}", flush=True)
             elif etype == "token_usage":
+                dprint("token_usage event", f"{(datetime.now() - start).total_seconds():.2f}s", color="magenta")
                 usage_summary = event.get("usage", {})
         if usage_summary:
             print()

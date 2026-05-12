@@ -16,7 +16,7 @@
 | **Monitor A2A Runtime** | `agents/monitor_a2a/runtime/agentcore_runtime.py` | `serve_a2a(LazyMonitorExecutor())` — A2A 프로토콜 서버. JWT inbound (Phase 2 Client). Phase 4 `monitor/shared/` 직접 재사용 (Option G) |
 | **Incident A2A Runtime** | `agents/incident_a2a/runtime/agentcore_runtime.py` | 동일 `serve_a2a` 패턴. Phase 4 `monitor/shared/` (helper) + `incident/shared/` (truth) 모두 import (Option G) |
 | **3 deploy 스크립트** | `agents/{supervisor,monitor_a2a,incident_a2a}/runtime/deploy_runtime.py` | 5 또는 6 단계. shared/ + `_shared_debug/` build context copy → toolkit configure → launch → IAM extras + OAuth provider → READY → repo root `.env` 저장 (prefixed) |
-| **Operator CLI 통합** | `agents/supervisor/runtime/invoke_runtime.py` | boto3 `invoke_agent_runtime` (SigV4) — Operator + admin 통합 진입점. Phase 4 invoke_runtime 패턴 carry-over |
+| **Operator CLI 통합** | `agents/supervisor/runtime/invoke_runtime.py` | boto3 `invoke_agent_runtime` (SigV4) — Operator + admin 통합 진입점. Phase 4 invoke_runtime 패턴 carry-over. `--session-id` 옵션으로 3-layer warm container 재사용 (§3-4) |
 | **3 teardown** | `agents/{supervisor,monitor_a2a,incident_a2a}/runtime/teardown.sh` | 6 step reverse + Phase 0/2/3/4 자원 + 다른 Phase 5 자원 보존 verify |
 
 **Phase 5 가 새로 만드는 AWS 자원 (infra stack 0)**:
@@ -267,42 +267,114 @@ Cache R/W 가 `0/0` → `<x>/0` (warm) 로 변동 — Supervisor 의 system_prom
 
 > sub-agent 의 cache 는 LazyExecutor 의 `self._built` 게이트 덕에 두 번째 invocation 부터 hit (placeholder 가 real agent 로 한번만 build).
 
-#### 3-3. DEBUG 모드 — 3 Runtime 모두 CloudWatch logs 에 FlowHook trace
+#### 3-3. DEBUG 모드 — host (operator timeline) + container (per-LLM-call) 양면
 
-container env `DEBUG=1` 이어야 활성 → 재배포 필요 (Phase 3/4 와 동일 패턴):
+두 layer 가 독립적으로 toggle 가능. host = 운영자 wall-clock 4 시점, container = LLM 내부 per-call detail.
+
+| Layer | 활성 | 출력 surface | 보이는 trace |
+|---|---|---|---|
+| **host** (invoke_runtime.py) | `DEBUG=1 uv run agents/supervisor/runtime/invoke_runtime.py ...` (shell env, **재배포 X**) | stdout (같은 터미널) | `HTTP response 도착` / `first SSE byte (TTFT)` / `first text token` / `token_usage event` 4 timing |
+| **container** (3 Runtime) | `DEBUG=1 uv run agents/.../deploy_runtime.py` (deploy 시 baked in container) | CloudWatch logs (별 터미널 tail) | per-LLM-call TTFT / usage / message complete (tool_use·tool_result) / FlowHook BeforeModel·BeforeToolCall |
+
+##### host DEBUG (재배포 X)
+
+`agents/supervisor/runtime/invoke_runtime.py` 가 `_shared_debug.dprint` 4 시점 timing 출력:
 
 ```bash
-# 3 Runtime 모두 DEBUG=1 으로 재배포
+DEBUG=1 uv run agents/supervisor/runtime/invoke_runtime.py --query "현재 상황 진단해줘"
+```
+
+DEBUG off 시 (`uv run ...` 단독) dprint 가 no-op — 기존 출력 동일.
+
+##### container DEBUG (재배포 필요)
+
+3 Runtime 모두 DEBUG=1 환경변수로 재배포 — 의존성 역순 (sub-agent 먼저, Supervisor 마지막):
+
+```bash
 DEBUG=1 uv run agents/monitor_a2a/runtime/deploy_runtime.py
 DEBUG=1 uv run agents/incident_a2a/runtime/deploy_runtime.py
 DEBUG=1 uv run agents/supervisor/runtime/deploy_runtime.py
 ```
 
-deploy 직후 status 확인:
+각 deploy 직후 status:
 ```
 DEBUG 모드:        ACTIVE (CloudWatch logs 에 FlowHook trace 출력)
 ```
 
-invoke 후 각 Runtime 의 logs tail (`AWS_REGION` + `*_RUNTIME_ID` env export 필요):
-
+read-only 검증:
 ```bash
 set -a; source .env; set +a
+for ID in "$SUPERVISOR_RUNTIME_ID" "$MONITOR_A2A_RUNTIME_ID" "$INCIDENT_A2A_RUNTIME_ID"; do
+  aws bedrock-agentcore-control get-agent-runtime --agent-runtime-id "$ID" \
+    --region "$AWS_REGION" --query 'environmentVariables.DEBUG' --output text
+done
+# 3 모두 "1" 출력이면 ON
+```
 
-# Supervisor (orchestrator — routing 결정 + sub-agent tool call 가시화)
-aws logs tail /aws/bedrock-agentcore/runtimes/${SUPERVISOR_RUNTIME_ID}-DEFAULT \
-    --follow --region "$AWS_REGION"
+invoke 후 각 Runtime CloudWatch tail (별 터미널 권장 — 또는 `--since 5m` 으로 사후 조회):
+
+```bash
+aws logs tail "/aws/bedrock-agentcore/runtimes/${SUPERVISOR_RUNTIME_ID}-DEFAULT"   --since 5m --region "$AWS_REGION" --format short | grep -E "TTFT|usage total|🔧 toolUse"
+aws logs tail "/aws/bedrock-agentcore/runtimes/${MONITOR_A2A_RUNTIME_ID}-DEFAULT"  --since 5m --region "$AWS_REGION" --format short | grep -E "TTFT|usage total"
+aws logs tail "/aws/bedrock-agentcore/runtimes/${INCIDENT_A2A_RUNTIME_ID}-DEFAULT" --since 5m --region "$AWS_REGION" --format short | grep -E "TTFT|usage total"
 ```
 
 확인 가능 trace:
-- `┏━━━ Supervisor → Bedrock — LLM call #N ━━━` (FlowHook delta dump)
-- `[DEBUG Bedrock → Supervisor] call #N TTFT / usage / done`
-- `┏━━━ message complete (role=assistant) ━━━ 🔧 toolUse: call_monitor_a2a({...})`
-- `[DEBUG Supervisor → Gateway] tool call: call_monitor_a2a({...})` (FlowHook BeforeToolCall — Supervisor 에선 "Gateway" 라벨이 "sub-agent A2A" 의미로 재해석됨)
-- 같은 시점 sub-agent log 에서 `Monitor → Bedrock` / `Incident → Bedrock` 추적 가능
+- `[DEBUG Bedrock → Supervisor] call #N TTFT XXXms` — per-LLM-call 첫 토큰까지
+- `[DEBUG Bedrock → Supervisor] usage total=X in=X out=X cacheR=X cacheW=X` — call 별 / 누적
+- `┏━━━ message complete (role=assistant) 🔧 toolUse: call_monitor_a2a({...})` — tool 선택 visualization
+- `[DEBUG Supervisor → Gateway] tool call: ...` — FlowHook BeforeToolCall (Supervisor 에서 "Gateway" 라벨이 "sub-agent A2A" 의미로 재해석됨)
 
 > A2A protocol 의 stream loop 는 `StrandsA2AExecutor` 내부 (우리가 소유 X) → sub-agent 의 `dump_stream_event` 호출 부재. FlowHook 의 BeforeModel + AfterModel + BeforeToolCall 만으로 가시화 (Phase 4 대비 message complete trace 한 단계 적음).
 
+##### 양면 timeline worked example
+
+운영자 입장에선 host (4 timing) 가 enough; deep debugging (어느 sub-agent 가 느린지, 어느 LLM call 이 cache miss 했는지) 시 container 도 enable. 실측한 34.6초 invoke 의 host stdout + Supervisor container per-LLM-call breakdown 표 + 핵심 통찰 (Bedrock LLM 본체 3.1s vs sub-agent A2A 24s) — [`phase5_detail.md §1`](phase5_detail.md#1-양면-timeline-worked-example-debug-observability).
+
 자세한 trace 의미: [`debug_mode.md`](debug_mode.md).
+
+#### 3-4. Session-Id 전파 — 3 layer warm container 재사용
+
+Phase 3/4 단독 invoke 의 `--session-id` 패턴이 Phase 5 에 3 layer 로 확장. Operator 가 동일 session-id 로 재호출하면 Supervisor + monitor_a2a + incident_a2a 3 microVM 모두 warm 재사용.
+
+##### 전파 경로
+
+```
+Operator CLI (--session-id S)
+    │ boto3.invoke_agent_runtime(runtimeSessionId=S)
+    ▼ wire header: X-Amzn-Bedrock-AgentCore-Runtime-Session-Id: S
+Supervisor Runtime (microVM 키 S 재사용)
+    │ AgentCore SDK 가 inbound header 를 ContextVar 에 set
+    │ → BedrockAgentCoreContext.get_session_id() == S
+    │
+    ├─ @tool call_monitor_a2a → _call_subagent
+    │     │ httpx header: X-Amzn-Bedrock-AgentCore-Runtime-Session-Id: S
+    │     ▼
+    │   Monitor A2A Runtime (microVM 키 S 재사용)
+    │     └─ LazyExecutor._built=True (real agent + MCP client 캐시)
+    │
+    └─ @tool call_incident_a2a → _call_subagent
+          │ httpx header: ... Session-Id: S
+          ▼
+        Incident A2A Runtime (microVM 키 S 재사용)
+          └─ LazyExecutor._built=True
+```
+
+##### 시연 — 같은 session-id 로 2회 invoke
+
+```bash
+SESSION="workshop-$(uuidgen | tr -d -)"    # 41자 (AgentCore 제약 ≥ 33)
+
+# 1st invoke — cold (3 microVM 모두 새로)
+uv run agents/supervisor/runtime/invoke_runtime.py --query "현재 상황 진단해줘" --session-id "$SESSION"
+
+# 2nd invoke — warm (3 microVM 모두 재사용)
+uv run agents/supervisor/runtime/invoke_runtime.py --query "현재 상황 진단해줘" --session-id "$SESSION"
+```
+
+2026-05-12 실측: **44.6s (cold) → 28.4s (warm)**, **-36%** — microVM cold-start + LazyExecutor 첫 build 절감이 핵심. Bedrock LLM 호출 자체는 변동 없음.
+
+자세한 — host CLI / container `_call_subagent` 핵심 코드, 측정 분해 (Supervisor + monitor_a2a + incident_a2a 각 ~5s 절감 출처), caveat 4종 (Bedrock prompt cache 와 독립 / idle 만료 / 길이 제약 / 동시성 위험): [`phase5_detail.md §2`](phase5_detail.md#2-session-id-전파--내부-구조--실측--caveat).
 
 ### 4. 정리
 
@@ -332,6 +404,7 @@ bash agents/monitor_a2a/runtime/teardown.sh
 | [`agents/{*}/runtime/deploy_runtime.py`](../../agents/) | 5 또는 6 단계 배포 — Option G build context + DEBUG forward |
 | [`agents/{*}/runtime/teardown.sh`](../../agents/) | 6 step reverse + negative check (다른 Phase 5 sub-agent 보존) |
 | [`debug_mode.md`](debug_mode.md) | DEBUG=1 시 3 Runtime 모두 FlowHook trace |
+| [`phase5_detail.md`](phase5_detail.md) | §3-3 worked example timeline + §3-4 session-id 내부 구조·실측·caveat |
 | [`phase4.md`](phase4.md) | Phase 4 Incident — Option G 의 source. sequential CLI 비교점 |
 | [`../design/phase6a.md`](../design/phase6a.md) | 의사결정 로그 (D1~D6 + Option X / G / Change 연기) |
 | [`../research/a2a_intro.md`](../research/a2a_intro.md) | A2A 프로토콜 직관 + serve_a2a canonical pattern (§10) |
@@ -348,3 +421,4 @@ bash agents/monitor_a2a/runtime/teardown.sh
 - **Change Agent 부재**: phase6a.md design 의 D6 (Change Agent + deployments-storage Lambda) 는 후속 phase 로 연기. Phase 5 = 2 sub-agent (monitor + incident) 만. 3+ sub-agent topology 시연은 별 phase.
 - **Phase 4 dependency**: Option G 가 Phase 4 코드 directory 의 file 존재만 요구 (`agents/monitor/shared/` + `agents/incident/shared/`). Phase 4 Runtime 자체는 alive 일 필요 없음 — build context copy 만. Phase 4 의 storage Lambda (`infra/s3-lambda/`) 는 alive 필요 (incident sub-agent 의 MCP tool 의존).
 - **AgentCard caching 부재**: Supervisor 의 `_call_subagent` 가 매 호출마다 `/.well-known/agent-card.json` fetch. sub-agent 호출이 보통 2-3회/query 이므로 부담 작음 — 그러나 high-throughput orchestrator 시 module-level cache 검토 가치 있음.
+- **Bedrock prompt cache hit 미관측 (재현 필요)**: 2026-05-12 실측에서 같은 session-id + 같은 query 연속 2회 invoke 시 Cache R/W 0/0 유지 (§3-2 예측 미실현). microVM 재사용 (host 워밍) 과 Bedrock prompt cache (invocation 단위) 는 독립적 — cache hit 시현은 single invoke 안 multi-turn 패턴이 필요. cachePoint 배치 또는 invocation 모델 재검토 가치.

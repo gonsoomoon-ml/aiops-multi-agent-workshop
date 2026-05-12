@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-agentcore_runtime.py — Phase 6a Supervisor Agent Runtime 진입점 (HTTP protocol)
+agentcore_runtime.py — Phase 5 Supervisor Agent Runtime 진입점 (HTTP protocol)
 
 Supervisor 는 운영자 (Operator CLI) 의 진입을 받음 → HTTP protocol Runtime 유지
 (`BedrockAgentCoreApp` + `@app.entrypoint`). sub-agent 호출은 A2A protocol — `@tool`
@@ -17,7 +17,7 @@ outbound (Supervisor → 2 sub-agents):
   - A2A protocol over HTTPS — `https://bedrock-agentcore.{region}.amazonaws.com/runtimes/
     {quote(arn)}/invocations/`
   - **Cognito Client M2M token** (Bearer) — **Option X**: Phase 2 의 기존 Client 재사용,
-    Phase 6a 가 추가하는 Cognito 자원 0. AgentCore customJWTAuthorizer 가 aud (= Client
+    Phase 5 가 추가하는 Cognito 자원 0. AgentCore customJWTAuthorizer 가 aud (= Client
     id) 만 검증 → Gateway scope 토큰이 sub-agent A2A inbound 에도 통과.
   - AgentCard discovery: `<base>/.well-known/agent-card.json`
 
@@ -26,7 +26,7 @@ outbound (Supervisor → 2 sub-agents):
     - OAUTH_PROVIDER_NAME — Cognito Client M2M provider (Phase 4 incident 와 동일 키)
     - COGNITO_GATEWAY_SCOPE — Phase 2 의 Gateway scope (sub-agent A2A inbound 통과)
     - MONITOR_A2A_RUNTIME_ARN, INCIDENT_A2A_RUNTIME_ARN — 2 sub-agents
-      (Change Agent 는 후속 phase 로 연기 — Phase 6a 단순화)
+      (Change Agent 는 후속 phase 로 연기 — Phase 5 단순화)
     - DEMO_USER, AWS_REGION
     - DEBUG — '1' / 'true' 시 FlowHook + dump_stream_event trace 출력 (off 시 no-op)
     - OTEL_RESOURCE_ATTRIBUTES, AGENT_OBSERVABILITY_ENABLED
@@ -68,6 +68,7 @@ from a2a.client import A2ACardResolver, ClientConfig, ClientFactory
 from a2a.types import Message, Part, Role, TextPart
 from bedrock_agentcore.identity.auth import requires_access_token
 from bedrock_agentcore.runtime import BedrockAgentCoreApp
+from bedrock_agentcore.runtime.context import BedrockAgentCoreContext
 from strands import tool
 
 SCRIPT_DIR = Path(__file__).resolve().parent
@@ -100,7 +101,7 @@ AGENT_NAME = f"aiops_demo_{DEMO_USER}_supervisor"
 
 MONITOR_A2A_ARN = os.environ["MONITOR_A2A_RUNTIME_ARN"]
 INCIDENT_A2A_ARN = os.environ["INCIDENT_A2A_RUNTIME_ARN"]
-# Change Agent 는 후속 phase 로 연기 — Phase 6a 는 monitor + incident 두 sub-agent 만
+# Change Agent 는 후속 phase 로 연기 — Phase 5 는 monitor + incident 두 sub-agent 만
 
 DEFAULT_TIMEOUT = 300
 
@@ -143,12 +144,18 @@ async def _call_subagent(arn: str, query: str) -> str:
     3. A2ACardResolver 로 sub-agent 의 AgentCard fetch (`/.well-known/agent-card.json`)
     4. ClientFactory 로 A2AClient 생성, send_message — Task lifecycle (working → completed)
     5. artifact[0].parts[0].root.text 추출 — sub-agent 의 최종 응답
+
+    Session-Id 전파: Operator → Supervisor inbound 의
+    ``X-Amzn-Bedrock-AgentCore-Runtime-Session-Id`` 를 그대로 sub-agent 호출에 propagate
+    (`BedrockAgentCoreContext.get_session_id()` ContextVar) → 동일 session 안 sub-agent
+    microVM warm 재사용. inbound 미제공 시 fallback uuid4 (cold per A2A call).
     """
     bearer = await _fetch_a2a_token()
     base_url = _runtime_url(arn)
+    session_id = BedrockAgentCoreContext.get_session_id() or str(uuid4())
     headers = {
         "Authorization": f"Bearer {bearer}",
-        "X-Amzn-Bedrock-AgentCore-Runtime-Session-Id": str(uuid4()),
+        "X-Amzn-Bedrock-AgentCore-Runtime-Session-Id": session_id,
     }
     async with httpx.AsyncClient(timeout=DEFAULT_TIMEOUT, headers=headers) as h:
         resolver = A2ACardResolver(httpx_client=h, base_url=base_url)
@@ -221,6 +228,25 @@ async def supervisor(payload: dict, context: Any) -> AsyncGenerator[dict, None]:
         # dump_stream_event 가 먼저 — TTFT + message complete + usage trace
         # (DEBUG off 시 no-op). Phase 3 monitor / Phase 4 incident 와 동일 패턴.
         dump_stream_event(event, agent=agent)
+
+        # message complete 의 toolUse / toolResult block 추출 → host progress 시각화
+        # (A2A roundtrip 이 28초 갭의 ~70% 차지 — operator 가 live 진행 인지)
+        msg = event.get("message")
+        if isinstance(msg, dict):
+            for block in msg.get("content", []) or []:
+                if not isinstance(block, dict):
+                    continue
+                if "toolUse" in block:
+                    tu = block["toolUse"]
+                    yield {"type": "tool_call_begin",
+                           "tool": tu.get("name", ""),
+                           "input": tu.get("input", {})}
+                elif "toolResult" in block:
+                    tr = block["toolResult"]
+                    yield {"type": "tool_call_end",
+                           "tool_use_id": tr.get("toolUseId", ""),
+                           "status": tr.get("status", "")}
+
         data = event.get("data", "")
         if data:
             yield {"type": "agent_text_stream", "text": data}

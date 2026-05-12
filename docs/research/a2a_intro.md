@@ -440,7 +440,7 @@ if __name__ == "__main__":
 ### 본 저장소 내 reference 코드 (학습용)
 - `/home/ubuntu/amazon-bedrock-agentcore-samples/01-tutorials/01-AgentCore-runtime/05-hosting-a2a/02-a2a-agent-sigv4/` — Strands `A2AServer` 최소 예제 (SigV4 인증)
 - `/home/ubuntu/amazon-bedrock-agentcore-samples/02-use-cases/A2A-multi-agent-incident-response/` — Google ADK + Strands + OpenAI 의 3-agent 토폴로지 (Cognito M2M)
-- `/home/ubuntu/amazon-bedrock-agentcore-samples/02-use-cases/A2A-realestate-agentcore-multiagents/` — Strands supervisor + Cognito 변형 — Phase 6a 와 가장 유사
+- `/home/ubuntu/amazon-bedrock-agentcore-samples/02-use-cases/A2A-realestate-agentcore-multiagents/` — Strands supervisor + Cognito 변형 — Phase 5 와 가장 유사
 
 ### 본 프로젝트 내 관련 design 문서
 - `docs/design/phase6a.md` — A2A 활성화 phase 의 설계

@@ -1,6 +1,6 @@
-# Supervisor Agent Runtime — Phase 6a
+# Supervisor Agent Runtime — Phase 5
 
-**Multi-agent orchestrator** — 운영자 (Operator CLI) 의 진입을 받아 sub-agent 2개 (monitor_a2a, incident_a2a) 를 routing/호출 후 통합 응답. Change Agent 는 후속 phase 로 연기 — Phase 6a 는 **A2A activation** 핵심 메시지에 집중.
+**Multi-agent orchestrator** — 운영자 (Operator CLI) 의 진입을 받아 sub-agent 2개 (monitor_a2a, incident_a2a) 를 routing/호출 후 통합 응답. Change Agent 는 후속 phase 로 연기 — Phase 5 는 **A2A activation** 핵심 메시지에 집중.
 
 ## 구조
 
@@ -36,7 +36,7 @@ agent = create_supervisor_agent(
 )
 ```
 
-> Change Agent 는 후속 phase 로 연기 — Phase 6a 는 **A2A activation** 핵심 메시지에 집중. 24h 배포 회귀 검증 + incidents append 는 별 phase 에서 다룸.
+> Change Agent 는 후속 phase 로 연기 — Phase 5 는 **A2A activation** 핵심 메시지에 집중. 24h 배포 회귀 검증 + incidents append 는 별 phase 에서 다룸.
 
 LLM 이 system_prompt 의 routing 정책 따라 어떤 tool 을 부를지 결정. tool 안에서 A2A hop 발생.
 
@@ -57,7 +57,7 @@ LLM 이 system_prompt 의 routing 정책 따라 어떤 tool 을 부를지 결정
    - `COGNITO_USER_POOL_ID`, `COGNITO_DOMAIN`
    - `COGNITO_CLIENT_ID`, `COGNITO_CLIENT_SECRET`
    - `COGNITO_GATEWAY_SCOPE`
-4. (Phase 6a Option X — 새 Cognito 자원 추가 0)
+4. (Phase 5 Option X — 새 Cognito 자원 추가 0)
 
 ## 배포
 
@@ -79,7 +79,7 @@ uv run agents/supervisor/runtime/deploy_runtime.py
 uv run agents/supervisor/runtime/invoke_runtime.py --query "현재 상황 진단해줘"
 ```
 
-Phase 4 의 monitor/incident `invoke_runtime.py` 와 동일 SigV4 IAM 패턴 — Phase 6a Option X 에서 Supervisor 의 customJWTAuthorizer 미설정 → 정상 경로 SigV4. 운영자 + admin 통합 진입점.
+Phase 4 의 monitor/incident `invoke_runtime.py` 와 동일 SigV4 IAM 패턴 — Phase 5 Option X 에서 Supervisor 의 customJWTAuthorizer 미설정 → 정상 경로 SigV4. 운영자 + admin 통합 진입점.
 
 ## payload 스키마
 

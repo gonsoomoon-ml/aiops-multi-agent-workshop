@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# teardown.sh — Phase 6a Monitor A2A Runtime + 의존 자원 reverse 순서 삭제.
-# Phase 0/2/3/4 자원 + 다른 Phase 6a 자원 (incident_a2a, change, supervisor) 미터치.
+# teardown.sh — Phase 5 Monitor A2A Runtime + 의존 자원 reverse 순서 삭제.
+# Phase 0/2/3/4 자원 + 다른 Phase 5 자원 (incident_a2a, change, supervisor) 미터치.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -19,7 +19,7 @@ LOG_GROUP="/aws/bedrock-agentcore/runtimes/${AGENT_NAME}"
 
 GREEN='\033[0;32m'; YELLOW='\033[1;33m'; RED='\033[0;31m'; NC='\033[0m'
 
-echo -e "${YELLOW}=== Phase 6a Monitor A2A teardown — ${AGENT_NAME} ===${NC}"
+echo -e "${YELLOW}=== Phase 5 Monitor A2A teardown — ${AGENT_NAME} ===${NC}"
 
 RUNTIME_ID="${RUNTIME_ID:-$(aws bedrock-agentcore-control list-agent-runtimes --region "$REGION" \
     --query "agentRuntimes[?agentRuntimeName=='${AGENT_NAME}'].agentRuntimeId" --output text 2>/dev/null || echo '')}"
@@ -98,4 +98,4 @@ else
     echo -e "  - monitor (HTTP) Runtime 미존재 (이미 정리되었거나 미배포)"
 fi
 
-echo -e "${GREEN}=== ✅ Phase 6a Monitor A2A teardown 완료 ===${NC}"
+echo -e "${GREEN}=== ✅ Phase 5 Monitor A2A teardown 완료 ===${NC}"
