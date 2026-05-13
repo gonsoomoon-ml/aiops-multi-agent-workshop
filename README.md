@@ -29,16 +29,16 @@ T+2m      Supervisor 통합 JSON stdout:
 
 | Act                        | Phase | 추가되는 layer                                                         | 핵심 학습 / 시스템 목표                                                                              |
 | -------------------------- | ----- | ------------------------------------------------------------------ | ------------------------------------------------------------------------------------------- |
-| **I. 기반 + 로컬 baseline**    | 0-1   | EC2 + 라이브 alarm 2종 (real + noise) + 첫 Strands Agent (mock)         | Agent 결정성 + prompt 영향력 (AWS 의존 0 — 회귀 baseline)                                             |
-| **II. AWS managed 승격**     | 2-3   | Gateway + MCP + Cognito JWT + Runtime container                    | **C2** (도구 외부화 — `@tool` → Lambda behind Gateway) / **C1** (local == Runtime 동일 코드)         |
-| **III. Multi-agent + A2A** | 4-5   | Incident Runtime + storage 추상화 (S3/GitHub) + Supervisor + A2A 프로토콜 | sequential CLI (Phase 4) → **C3** LLM-driven routing (Phase 5 — `serve_a2a` + LazyExecutor) |
+| **I. 기반 + 로컬 baseline**    | 0-1   | EC2 + 라이브 alarm 2종 (real + noise) + 첫 Strands Agent (mock)         | Strands SDK 로 간단한 로컬 Agent 작성 (AWS 의존 0 — 회귀 baseline)                                             |
+| **II. AWS managed 승격**     | 2-3   | Gateway + MCP + Cognito JWT + Runtime container                    | 도구 외부화 (`@tool` → Lambda behind Gateway) / **로컬 Agent → AgentCore Runtime 배포** (동일 코드 승격)         |
+| **III. Multi-agent + A2A** | 4-5   | Incident Runtime + storage 추상화 (S3/GitHub) + Supervisor + Monitor A2A + Incident A2A (A2A 프로토콜 활성) | **Supervisor LLM 이 sub-agent routing 결정** (`serve_a2a` + LazyExecutor — hardcoded 분기 0) |
 
 
 ---
 
 ## 3. 아키텍처
 
-Phase 5 완료 시점 component layout. 시나리오 = 시간축 (T-0~T+2m), 아래 다이어그램 = 공간축 (어디서 무엇이 돌아가나).
+Phase 5 active call path. 시나리오 = 시간축 (T-0~T+2m), 아래 다이어그램 = 공간축 (어디서 무엇이 돌아가나).
 
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
@@ -62,92 +62,86 @@ Phase 5 완료 시점 component layout. 시나리오 = 시간축 (T-0~T+2m), 아
        └─────────────────────┬───────────────────┘
                              ▼
 ┌─────────────────────────────────────────────────────────────────────┐
-│  AgentCore Gateway  —  MCP server (3 targets)            (Phase 2)  │
-│    ├─ history-mock        →  Lambda  (mock alarm history)           │
-│    ├─ cloudwatch-wrapper  →  Lambda  →  CloudWatch alarm API        │
-│    └─ s3-storage          →  Lambda  →  S3 (runbook + diagnosis)    │
+│  AgentCore Gateway  —  MCP server (3 targets)                       │
+│    ├─ history-mock        →  Lambda  (mock alarm history) (Phase 2) │
+│    ├─ cloudwatch-wrapper  →  Lambda  →  CloudWatch alarm  (Phase 2) │
+│    └─ storage             →  Lambda  →  S3 / GitHub       (Phase 4) │
+│         (STORAGE_BACKEND env 분기 — default=s3)                     │
 └─────────────────────────────────────────────────────────────────────┘
 
-  ─── 가로지르는 layer ───────────────────────────────────────────────
-   Cognito UserPool + Client (Phase 2)  →  JWT (M2M)  →  A2A inbound + Gateway 검증
-   EC2 simulator + 2 CloudWatch alarms  (Phase 0)     →  payment-${DEMO_USER}-*
+  ─── 공통 인프라 (모든 phase 횡단) ───────────────────────────────────
+   Cognito UserPool + Client (Phase 2)
+        → JWT (M2M) → Gateway 검증 (Phase 2) + A2A inbound 검증 (Phase 5)
+   EC2 simulator + CloudWatch alarm 2종 (Phase 0)
+        → payment-${DEMO_USER}-status-check  (real alarm)
+        → payment-${DEMO_USER}-noisy-cpu     (noise alarm)
 ```
 
 ---
 
-## 4. 시스템 목표
-
-
-| #                    | 능력                                          | 구현 Phase | 검증 기준                                                                                                                                                                           |
-| -------------------- | ------------------------------------------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **C1**               | Strands 로컬 → AgentCore Runtime 동일 코드 승격     | Phase 3  | `agents/monitor/local/run.py --mode past` vs `agents/monitor/runtime/invoke_runtime.py --mode past` 가 동일 분류 (`from shared.agent import create_agent` 공유 — structural invariant) |
-| **C2**               | Gateway + MCP 로 도구 외부화                      | Phase 2  | Agent 모듈에 boto3 / Lambda client import 0건 — 모든 도구는 MCP `<target>___<tool>`                                                                                                      |
-| **C3**               | A2A 프로토콜로 sub-agent 분리 + LLM-driven routing | Phase 5  | Supervisor LLM 이 system_prompt 만 보고 `call_monitor_a2a` / `call_incident_a2a` 호출 시점 결정 (hardcoded 분기 0건)                                                                         |
-| **C4** *(stretched)* | AgentCore NL Policy 가드레일                    | Phase 6+ | readonly 위반 query 차단 + 정책 메시지 반환                                                                                                                                                |
-
-
----
-
-## 5. 학습할 기술
+## 4. 학습할 기술
 
 **Strands SDK**
 
-- **Strands Agent SDK** — `BedrockModel` + `@tool` + `MCPClient` + `stream_async`
-- **Strands hooks** — `BeforeModelCallEvent` / `AfterModelCallEvent` / `BeforeToolCallEvent` 로 pre-call 시점 + LLM duration + TTFT 측정
+- **Strands Agent SDK** *(Phase 1)* — `BedrockModel` + `@tool` + `MCPClient` + `stream_async`
+- **Strands hooks** *(Phase 2)* — `BeforeModelCallEvent` / `AfterModelCallEvent` / `BeforeToolCallEvent` 로 pre-call 시점 + LLM duration + TTFT 측정
 
 **AWS Bedrock AgentCore**
 
 - **AgentCore Runtime** *(Phase 3)* — 컨테이너 배포, 로컬 코드 그대로 서비스화
-- **AgentCore Gateway** — MCP 도구 외부화 + Cognito JWT 3-layer 검증
+- **AgentCore Gateway** *(Phase 2)* — MCP 도구 외부화 + JWT 검증 3 단계 (Cognito issue → Gateway authorizer → Lambda `client_context.custom`)
 - **AgentCore Identity** *(Phase 3)* — OAuth2 provider 자동 token inject
 
 **프로토콜 + 오케스트레이션**
 
-- **MCP 프로토콜** — streamable HTTP + `<target>___<tool>` namespacing
+- **MCP 프로토콜** *(Phase 2)* — streamable HTTP + `<target>___<tool>` namespacing
 - **A2A 프로토콜** *(Phase 5)* — `serve_a2a` + `LazyExecutor` AWS canonical 패턴
-- `**@tool` wrapping a2a.client** *(Phase 5)* — Strands `Agent` 가 `sub_agents` 미지원 → sub-agent 를 도구로 노출, LLM 이 routing 결정 (caller-as-LLM-tool)
-- **Multi-agent orchestration** — Sequential CLI *(Phase 4)* → A2A 그래프 진화 *(Phase 5)*
+- **`@tool` wrapping a2a.client** *(Phase 5)* — Strands `Agent` 가 `sub_agents` 미지원 → sub-agent 를 도구로 노출, LLM 이 routing 결정 (caller-as-LLM-tool)
+- **Multi-agent orchestration** *(Phase 5)* — A2A graph + LLM-driven sub-agent dispatch
 
 **인증 + 인프라**
 
-- **JWT M2M 인증** — Cognito ResourceServer + scope + `customJWTAuthorizer`
-- **CFN + boto3 하이브리드** — 표준 자원은 IaC, AgentCore 자원은 SDK step-by-step
+- **JWT M2M 인증** *(Phase 2)* — Cognito ResourceServer + scope + `customJWTAuthorizer`
+- **CFN + boto3 하이브리드** *(cross-phase)* — 표준 자원은 IaC, AgentCore 자원은 SDK step-by-step
 - **Cross-stack IAM** *(Phase 4)* — storage Lambda stack 이 cognito-gateway 의 GatewayIamRole 에 inline policy 부착 (stack 간 dependency 격리)
 - **Storage backend 추상화** *(Phase 4)* — `STORAGE_BACKEND=s3/github` env 분기, Lambda 응답 shape byte-level 동형 → Agent 코드 변경 X 로 backend swap
 
 **성능 + 관측**
 
-- **Prompt caching** — `cache_tools="default"` + `SystemContentBlock` cachePoint (Layer 1+2) → single invocation 내 즉시 hit + 5분 warm TTL
+- **Prompt caching** *(Phase 3+)* — `cache_tools="default"` + `SystemContentBlock` cachePoint (Layer 1+2) → single invocation 내 즉시 hit + 5분 warm TTL
 - **Warm container reuse** *(Phase 3+; Phase 5 에서 3 Runtime 으로 확장)* — `runtimeSessionId` 반복으로 같은 microVM 재사용 → TTFT 단축 (prompt cache 와 분리된 caching layer)
-- **Debug mode** — env `DEBUG=1` 로 phase 횡단 trace (auth / MCP / tool / TTFT / cache), `agent_name` parameter 로 multi-agent 라벨 격리
+- **Debug mode** *(Phase 2)* — env `DEBUG=1` 로 phase 횡단 trace (auth / MCP / tool / TTFT / cache), `agent_name` parameter 로 multi-agent 라벨 격리
 
 ---
 
-## 6. 사전 요구사항
+## 5. 사전 요구사항
 
-- **AWS 계정** (us-east-1 region)
-- **Bedrock model access** — Claude Sonnet 4.6 / Haiku 4.5 활성화
-- **AgentCore Runtime quota** — 5개 (Monitor + Incident + Monitor A2A + Incident A2A + Supervisor)
-- **Python 3.12+** + `[uv](https://github.com/astral-sh/uv)`
-- **Docker** — AgentCore Runtime 컨테이너 빌드
-- **GitHub Personal Access Token** — `repo` scope (**STORAGE_BACKEND=github 선택 시에만**)
+- **AWS 계정** *(Phase 0+)* — us-east-1 region (Bedrock + AgentCore 가용성)
+- **IAM 권한** *(Phase 0+)* — `AdministratorAccess` (또는 동등) — CFN / IAM / Lambda / Cognito / Bedrock / AgentCore / EC2 / CloudWatch / S3 / ECR / SSM 자원 생성 필요. **워크샵 단순화용** — 운영은 least-privilege role 권장.
+- **Bedrock model access** *(Phase 1+)* — Claude Sonnet 4.6 (`global.anthropic.claude-sonnet-4-6`). Anthropic FTU form 1회 제출 ([Bedrock model access docs](https://docs.aws.amazon.com/bedrock/latest/userguide/model-access.html))
+- **AgentCore Runtime quota** *(Phase 5)* — 5개 (Monitor + Incident + Monitor A2A + Incident A2A + Supervisor)
+- **Python 3.12+** *(Phase 0+)* + [`uv`](https://github.com/astral-sh/uv)
+- **Docker daemon** *(Phase 3+)* — local `docker build` → ECR push 용도 (Runtime 실행은 AWS managed)
+- **GitHub Personal Access Token** *(Phase 4+)* — `repo` scope (**STORAGE_BACKEND=github 선택 시에만**)
 
 ---
 
-## 7. 폴더 구조
+## 6. 폴더 구조
 
 ```
 aiops-multi-agent-workshop/
 ├── agents/                      # Strands Agent + AgentCore Runtime 코드
 │   ├── monitor/                 #   Phase 1-3: 로컬 + Runtime
 │   ├── incident/                #   Phase 4: Incident Runtime + shared
-│   ├── monitor_a2a/             #   Phase 5: A2A 프로토콜 활성 (Option G — Phase 4 shared/ 직접 import)
+│   ├── monitor_a2a/             #   Phase 5: A2A 프로토콜 활성 (Phase 4 shared/ 직접 import)
 │   ├── incident_a2a/            #   Phase 5: 동일 패턴
 │   └── supervisor/              #   Phase 5: A2A caller (HTTP inbound, A2A outbound)
+├── _shared_debug/               # Phase 2+ FlowHook 기반 Debug trace 공통 helper
 ├── infra/                       # CFN 신규 자원이 있는 phase 만 디렉토리
 │   ├── ec2-simulator/           #   Phase 0
 │   ├── cognito-gateway/         #   Phase 2
-│   └── github-lambda/           #   Phase 4
+│   ├── s3-lambda/               #   Phase 4: S3 storage backend (default)
+│   └── github-lambda/           #   Phase 4: GitHub storage backend (STORAGE_BACKEND=github)
 ├── data/                        # GitHub repo 가 보유할 데이터 (이 repo 가 곧 GitHub data store)
 │   ├── runbooks/                #   Incident Agent 가 read 하는 진단 절차 markdown
 │   └── mock/phase1/             #   Phase 1 mock alarm history (history mock Lambda 가 vendor)
@@ -155,15 +149,16 @@ aiops-multi-agent-workshop/
 │   ├── learn/                   #   Phase 별 narrative (workshop 청중용) + teardown
 │   ├── design/                  #   Phase 별 의사결정 로그 (D1~D10)
 │   └── research/                #   A2A / AgentCore 학습 노트 + POC mini-projects
-├── tests/                       # mock_data ground truth 검증 (pytest)
 ├── setup/                       # one-off setup helper (GitHub PAT → SSM)
+├── pyproject.toml               # Python 프로젝트 + uv 의존성 정의
+├── uv.lock                      # uv lockfile (pinned)
 ├── bootstrap.sh                 # dev 환경 + .env + SSM token 일괄
 └── teardown_all.sh              # 8 step 자원 일괄 삭제
 ```
 
 ---
 
-## 8. Quickstart
+## 7. Quickstart
 
 ### 1. 부트스트랩 (1회)
 
@@ -175,7 +170,7 @@ bash bootstrap.sh
 
 ### 2. Phase 별 학습 + deploy
 
-각 phase 의 narrative 는 `docs/learn/phase{N}.md`. **순서대로** 읽고 해당 phase 의 deploy 명령 실행. 각 narrative 에 "무엇 (what it is)" + "어떻게 동작 (how it works)" + 검증 (P{N}-A1~A5) 포함.
+각 phase 의 narrative 는 `docs/learn/phase{N}.md`. **순서대로** 읽고 해당 phase 의 deploy 명령 실행. 각 narrative 에 "무엇 (what it is)" + "어떻게 동작 (how it works)" + 검증 (P{N}-A1~A5 = phase 별 acceptance check 5종) 포함.
 
 
 | Phase | 이름                                        | 핵심 산출물                                                                                                | Narrative                                      | 예상 소요 | 상태  |
@@ -184,7 +179,7 @@ bash bootstrap.sh
 | **1** | Strands Agent (local, mock)               | 로컬 Monitor Agent (Strands) + 3가지 진단 유형 (Rule 폐기 / Threshold 상향 / Time window 제외)                      | `[docs/learn/phase1.md](docs/learn/phase1.md)` | 40 분  | ✅   |
 | **2** | AgentCore Gateway + MCP + Debug mode      | AgentCore Gateway + MCP 도구 외부화 (CloudWatch + history mock Lambda) + FlowHook 기반 Debug trace (DEBUG=1) | `[docs/learn/phase2.md](docs/learn/phase2.md)` | 60 분  | ✅   |
 | **3** | AgentCore Runtime — Monitor               | Monitor Agent → AgentCore Runtime 승격                                                                  | `[docs/learn/phase3.md](docs/learn/phase3.md)` | 60 분  | ✅   |
-| **4** | AgentCore Runtime — Incident + Storage    | Incident Runtime + storage Lambda (`STORAGE_BACKEND=s3` default / `github` 선택) + sequential CLI       | `[docs/learn/phase4.md](docs/learn/phase4.md)` | 60 분  | ✅   |
+| **4** | AgentCore Runtime — Incident + Storage    | Incident Runtime + storage Lambda (`STORAGE_BACKEND=s3` default / `github` 선택)       | `[docs/learn/phase4.md](docs/learn/phase4.md)` | 60 분  | ✅   |
 | **5** | AgentCore A2A — Supervisor + 2 sub-agents | Supervisor + Monitor A2A + Incident A2A — A2A 활성화 (`serve_a2a` + LazyExecutor)                        | `[docs/learn/phase5.md](docs/learn/phase5.md)` | 90 분  | ✅   |
 | **6** | EC Mall 통합                                | EC mall 통합 — alarm 추가만으로 동일 시나리오 재현 (외부 의존)                                                           | —                                              | —     | 🚧  |
 
@@ -194,24 +189,25 @@ bash bootstrap.sh
 **Stretched** (시간 여유 / 후속 자료):
 
 - **Policy** — AgentCore NL Policy readonly enforcement + 거부 시연
-- **Change Agent** — deployments-storage Lambda + Supervisor 3-agent topology 복원
 
 ---
 
-## 9. Teardown / Reset
+## 8. Teardown / Reset
 
 전체 자원 일괄 삭제 (의존성 역순 8 step):
 
 ```bash
 bash teardown_all.sh           # 확인 prompt 후 진행
-bash teardown_all.sh --yes     # skip
+bash teardown_all.sh --yes     # 확인 prompt skip (CI/auto 용)
 ```
 
-step 별 분해 + idempotent 보장 + 검증 명령은 `[docs/learn/teardown.md](docs/learn/teardown.md)` 참조.
+step 별 분해 + idempotent 보장 + 검증 명령은 [docs/learn/teardown.md](docs/learn/teardown.md) 참조.
 
 ---
 
-## 10. Reference
+## 9. References
+
+### 1. 내부 doc — 프로젝트 설계/의사결정
 
 
 | 자료                                                                                 | 용도                                                                      |
@@ -224,9 +220,7 @@ step 별 분해 + idempotent 보장 + 검증 명령은 `[docs/learn/teardown.md]
 | `[CLAUDE.md](CLAUDE.md)`                                                           | 본 프로젝트의 코드 작성 / 리뷰 / 문서화 컨벤션                                            |
 
 
----
-
-## 11. 참고 코드베이스
+### 2. 외부 upstream repo — 차용 패턴
 
 본 프로젝트가 직접 차용한 4 upstream repo:
 
@@ -239,8 +233,3 @@ step 별 분해 + idempotent 보장 + 검증 명령은 `[docs/learn/teardown.md]
 | **sample-deep-insight**                                                                                   | (cherry-pick) per-agent `MODEL_ID` env, OTEL `service.name` → CloudWatch GenAI Observability 자동 통합                                                 |
 
 
----
-
-## 12. 라이선스
-
-[LICENSE](LICENSE)
