@@ -1,12 +1,255 @@
 # Phase 5 — Supervisor + A2A 프로토콜 활성화
 
-> Phase 4 의 sequential CLI (boto3 SIGV4 로 Monitor → Incident 순차) 가 *caller 역할* 을 명시적으로 처리한 데 비해, Phase 5 는 **Supervisor Runtime** 이 *LLM-driven orchestrator* 가 되어 **A2A 프로토콜** 로 2 sub-agent (`monitor_a2a` + `incident_a2a`) 를 호출. routing 정책은 hardcoded 가 아니라 system_prompt 와 sub-agent `@tool` 시그니처 → LLM 이 어떤 sub-agent 를 언제 호출할지 결정.
+> Phase 5 는 **Supervisor Runtime** 이 *LLM-driven orchestrator* 가 되어 **A2A 프로토콜** 로 2 sub-agent (`monitor_a2a` + `incident_a2a`) 를 호출. routing 정책은 hardcoded 가 아니라 system_prompt 와 sub-agent `@tool` 시그니처 → LLM 이 어떤 sub-agent 를 언제 호출할지 결정.
 
 설계 원본: [`docs/design/phase6a.md`](../design/phase6a.md) (D1~D6 + Option X / Option G / Change Agent 연기). 새 번호 = Phase 5, 옛 번호 = Phase 6a (파일/디렉토리 명은 `agents/*_a2a/` 그대로 — 역사 보존). A2A 프로토콜 직관: [`docs/research/a2a_intro.md`](../research/a2a_intro.md).
 
 ---
 
-## 무엇을 만드나
+## 1. 왜 필요한가   *(~5 min read)*
+
+| 동기 | Phase 4 한계 | Phase 5 해결 |
+|---|---|---|
+| LLM-driven orchestration | sequential CLI = hardcoded routing (Monitor → Incident 고정) | Supervisor LLM 이 system_prompt 의 정책 따라 어떤 sub-agent 를 언제 호출할지 결정 — query 에 따라 routing 달라짐 |
+| Multi-agent transport | CLI 가 boto3 SIGV4 로 각 Runtime 직접 호출 — caller 가 응답 통합 책임 | A2A 프로토콜 (JSON-RPC over HTTP + AgentCard discovery + Bearer JWT) — Supervisor 가 caller-as-LLM-tool 패턴 (Strands `@tool` wrapping `a2a.client`) |
+| 자원 확장 비용 | Cognito Client 분리 시 보안 자원 +N | **Option X**: Phase 2 Client 재사용 (sub-agent JWT inbound 통과) — Cognito 추가 자원 0 |
+| 코드 중복 | Phase 4 shared/ 가 sub-agent A2A 변형에 그대로 필요 | **Option G**: Phase 4 `monitor/shared` + `incident/shared` 직접 import + build context copy — 새 phase 의 코드는 A2A wrap 만 |
+
+---
+
+## 2. 진행 (Hands-on)   *(quick try ~10 min / full ~45 min / teardown ~5 min)*
+
+### 2-1. 빠른 체험 (Quick try)
+
+> **사전**: Phase 0~4 deploy 완료 + `.env` / `DEMO_USER` / AWS 자격증명.
+
+```bash
+# Phase 5 deploy — 3 Runtime, 의존 순서
+cd agents/monitor_a2a/runtime && uv run deploy_runtime.py && cd -
+cd agents/incident_a2a/runtime && uv run deploy_runtime.py && cd -
+cd agents/supervisor/runtime && uv run deploy_runtime.py && cd -
+
+# Supervisor 호출 — HTTP via SigV4, 내부에서 A2A 로 2 sub-agent 분기
+uv run agents/supervisor/runtime/invoke_runtime.py --query "현재 상황 진단해줘"
+```
+
+**기대 결과** (cold, ~50초):
+- stdout: `{ summary, monitor, incidents, next_steps }` JSON
+- Supervisor LLM 이 system_prompt 만 보고 `call_monitor_a2a` + `call_incident_a2a` 둘 다 호출 결정
+- 통합 진단 → 운영자에게 "어떤 alarm 이 real, 어떤 게 noise, 권장 조치" 답변
+
+→ 시간 있으면 §2-2~2-5 로 full deploy + 검증 + 정리. §3 무엇 / §4 어떻게 로 internals deep dive.
+
+### 2-2. 사전 확인 (Full deploy 시작 전)
+
+- Phase 0 완료 (EC2 + 2 alarm alive — `payment-${DEMO_USER}-*`).
+- Phase 2 완료 (Cognito stack + Gateway alive — `COGNITO_CLIENT_ID` / `GATEWAY_URL` 등 root `.env`).
+- Phase 4 의 `infra/s3-lambda/deploy.sh` 완료 (storage Lambda + Gateway Target `s3-storage` alive — incident 의존).
+- Phase 4 의 `agents/monitor/shared/` + `agents/incident/shared/` 가 repo 에 존재 (Option G — 코드 source).
+- AWS 자격 증명 + Docker daemon + `uv sync`.
+
+> **Phase 3/4 Runtime 미alive 도 OK**: Phase 5 는 Phase 3/4 의 *코드만* 재사용. Phase 3 Monitor Runtime / Phase 4 Incident Runtime 자체가 alive 일 필요 없음 (Phase 5 가 별 Runtime — `*_a2a`).
+
+### 2-3. Deploy (3 단계 sequential, 상세)
+
+```bash
+# Step 1 — Monitor A2A (의존 없음)
+uv run agents/monitor_a2a/runtime/deploy_runtime.py
+
+# Step 2 — Incident A2A (의존 없음)
+uv run agents/incident_a2a/runtime/deploy_runtime.py
+
+# Step 3 — Supervisor (sub-agent ARN cross-load 후 마지막)
+uv run agents/supervisor/runtime/deploy_runtime.py
+```
+
+각 deploy 5-10분 (cold start) / ~52초 (warm — ECR layer cache). 각 단계마다:
+- shared/ + `_shared_debug/` build context copy (Option G + Phase 3/4 parity)
+- toolkit `Runtime.configure()` — sub-agent 는 `protocol="A2A"` + JWT authorizer, supervisor 는 `protocol="HTTP"` + authorizer 미설정 (SigV4 default)
+- `Runtime.launch()` — ECR build + push + Runtime 생성 + env_vars 주입 (`DEBUG` 호스트 값 forward 포함)
+- IAM inline policy + `OAuth2CredentialProvider` (Phase 2 Client 재사용)
+- READY 대기 + repo root `.env` 갱신 (`MONITOR_A2A_*` / `INCIDENT_A2A_*` / `SUPERVISOR_*` prefix)
+
+Supervisor deploy 의 step [2/6] 가 **sub-agent ARN cross-load** 수행 — root `.env` 에서 `MONITOR_A2A_RUNTIME_ARN` + `INCIDENT_A2A_RUNTIME_ARN` 직접 read 후 Supervisor container 의 env_vars 로 주입.
+
+### 2-4. 검증 (P5-A1~A5)
+
+#### End-to-end smoke (Operator → Supervisor → 2 sub-agents)
+
+```bash
+uv run agents/supervisor/runtime/invoke_runtime.py --query "현재 상황 진단해줘"
+```
+
+성공 시 출력 (실측 — 41.9초, 31,572 tokens [3 Runtime 합산], us-east-1):
+
+```json
+{
+  "summary": "현재 유효 알람 1건 (payment-bob-status-check, P1) 발생 중입니다. ...",
+  "monitor": "라이브 알람 총 2개 중 real 1개 (payment-bob-status-check), noise 1개 ...",
+  "incidents": [
+    {
+      "alarm": "payment-bob-status-check",
+      "diagnosis": "payment 서비스 EC2 인스턴스의 status check 실패. Kernel panic ...",
+      "severity": "P1",
+      "recommended_actions": [
+        "describe instance status via aws ec2 describe-instance-status",
+        "reboot instance within first 5 minutes",
+        ...
+      ]
+    }
+  ],
+  "next_steps": [
+    "Run aws ec2 describe-instance-status for payment-bob instance immediately",
+    ...
+  ]
+}
+
+📊 Monitor        — Total: 8,471  | Input: 934   | Output: 523   | Cache R/W: 3,507/3,507
+📊 Incident       — Total: 6,948  | Input: 1,569 | Output: 379   | Cache R/W: 2,500/2,500
+📊 Supervisor     — Total: 16,153 | Input: 2,509 | Output: 1,068 | Cache R/W: 8,384/4,192
+📊 Combined       — Total: 31,572 | Input: 5,012 | Output: 1,970 | Cache R/W: 14,391/10,199
+✅ 완료 (41.9초)
+```
+
+token_usage SSE event 가 3 Runtime 별 (Monitor / Incident / Supervisor) + Combined 합산 4 line 으로 분해 표시 — 워크샵 청중이 multi-agent token cost 의 분포 + cache hit ratio 를 한눈에 파악 가능.
+
+#### Prompt caching 확인 — 같은 query 재호출
+
+5분 이내 같은 query 로 다시 invoke:
+
+```bash
+uv run agents/supervisor/runtime/invoke_runtime.py --query "현재 상황 진단해줘"
+```
+
+Cache R/W 가 `0/0` → `<x>/0` (warm) 로 변동 — Supervisor 의 system_prompt + tool schema cache hit. Layer 1 (`cache_tools="default"`) + Layer 2 (system prompt cachePoint) — Phase 3/4 와 동일 패턴.
+
+> sub-agent 의 cache 는 LazyExecutor 의 `self._built` 게이트 덕에 두 번째 invocation 부터 hit (placeholder 가 real agent 로 한번만 build).
+
+#### DEBUG 모드 — host (operator timeline) + container (per-LLM-call) 양면
+
+두 layer 가 독립적으로 toggle 가능. host = 운영자 wall-clock 4 시점, container = LLM 내부 per-call detail.
+
+| Layer | 활성 | 출력 surface | 보이는 trace |
+|---|---|---|---|
+| **host** (invoke_runtime.py) | `DEBUG=1 uv run agents/supervisor/runtime/invoke_runtime.py ...` (shell env, **재배포 X**) | stdout (같은 터미널) | `HTTP response 도착` / `first SSE byte (TTFT)` / `first text token` / `token_usage event` 4 timing |
+| **container** (3 Runtime) | `DEBUG=1 uv run agents/.../deploy_runtime.py` (deploy 시 baked in container) | CloudWatch logs (별 터미널 tail) | per-LLM-call TTFT / usage / message complete (tool_use·tool_result) / FlowHook BeforeModel·BeforeToolCall |
+
+##### host DEBUG (재배포 X)
+
+`agents/supervisor/runtime/invoke_runtime.py` 가 `_shared_debug.dprint` 4 시점 timing 출력:
+
+```bash
+DEBUG=1 uv run agents/supervisor/runtime/invoke_runtime.py --query "현재 상황 진단해줘"
+```
+
+DEBUG off 시 (`uv run ...` 단독) dprint 가 no-op — 기존 출력 동일.
+
+##### container DEBUG (재배포 필요)
+
+3 Runtime 모두 DEBUG=1 환경변수로 재배포 — 의존성 역순 (sub-agent 먼저, Supervisor 마지막):
+
+```bash
+DEBUG=1 uv run agents/monitor_a2a/runtime/deploy_runtime.py
+DEBUG=1 uv run agents/incident_a2a/runtime/deploy_runtime.py
+DEBUG=1 uv run agents/supervisor/runtime/deploy_runtime.py
+```
+
+각 deploy 직후 status:
+```
+DEBUG 모드:        ACTIVE (CloudWatch logs 에 FlowHook trace 출력)
+```
+
+read-only 검증:
+```bash
+set -a; source .env; set +a
+for ID in "$SUPERVISOR_RUNTIME_ID" "$MONITOR_A2A_RUNTIME_ID" "$INCIDENT_A2A_RUNTIME_ID"; do
+  aws bedrock-agentcore-control get-agent-runtime --agent-runtime-id "$ID" \
+    --region "$AWS_REGION" --query 'environmentVariables.DEBUG' --output text
+done
+# 3 모두 "1" 출력이면 ON
+```
+
+invoke 후 각 Runtime CloudWatch tail (별 터미널 권장 — 또는 `--since 5m` 으로 사후 조회):
+
+```bash
+aws logs tail "/aws/bedrock-agentcore/runtimes/${SUPERVISOR_RUNTIME_ID}-DEFAULT"   --since 5m --region "$AWS_REGION" --format short | grep -E "TTFT|usage total|🔧 toolUse"
+aws logs tail "/aws/bedrock-agentcore/runtimes/${MONITOR_A2A_RUNTIME_ID}-DEFAULT"  --since 5m --region "$AWS_REGION" --format short | grep -E "TTFT|usage total"
+aws logs tail "/aws/bedrock-agentcore/runtimes/${INCIDENT_A2A_RUNTIME_ID}-DEFAULT" --since 5m --region "$AWS_REGION" --format short | grep -E "TTFT|usage total"
+```
+
+확인 가능 trace:
+- `[DEBUG Bedrock → Supervisor] call #N TTFT XXXms` — per-LLM-call 첫 토큰까지
+- `[DEBUG Bedrock → Supervisor] usage total=X in=X out=X cacheR=X cacheW=X` — call 별 / 누적
+- `┏━━━ message complete (role=assistant) 🔧 toolUse: call_monitor_a2a({...})` — tool 선택 visualization
+- `[DEBUG Supervisor → Gateway] tool call: ...` — FlowHook BeforeToolCall (Supervisor 에서 "Gateway" 라벨이 "sub-agent A2A" 의미로 재해석됨)
+
+> A2A protocol 의 stream loop 는 `StrandsA2AExecutor` 내부 (우리가 소유 X) → sub-agent 의 `dump_stream_event` 호출 부재. FlowHook 의 BeforeModel + AfterModel + BeforeToolCall 만으로 가시화 (Phase 4 대비 message complete trace 한 단계 적음).
+
+##### 양면 timeline worked example
+
+운영자 입장에선 host (4 timing) 가 enough; deep debugging (어느 sub-agent 가 느린지, 어느 LLM call 이 cache miss 했는지) 시 container 도 enable. 실측한 34.6초 invoke 의 host stdout + Supervisor container per-LLM-call breakdown 표 + 핵심 통찰 (Bedrock LLM 본체 3.1s vs sub-agent A2A 24s) — [`phase5_detail.md §1`](phase5_detail.md#1-양면-timeline-worked-example-debug-observability).
+
+자세한 trace 의미: [`debug_mode.md`](debug_mode.md).
+
+#### Session-Id 전파 — 3 layer warm container 재사용
+
+Phase 3/4 단독 invoke 의 `--session-id` 패턴이 Phase 5 에 3 layer 로 확장. Operator 가 동일 session-id 로 재호출하면 Supervisor + monitor_a2a + incident_a2a 3 microVM 모두 warm 재사용.
+
+##### 전파 경로
+
+```
+Operator CLI (--session-id S)
+    │ boto3.invoke_agent_runtime(runtimeSessionId=S)
+    ▼ wire header: X-Amzn-Bedrock-AgentCore-Runtime-Session-Id: S
+Supervisor Runtime (microVM 키 S 재사용)
+    │ AgentCore SDK 가 inbound header 를 ContextVar 에 set
+    │ → BedrockAgentCoreContext.get_session_id() == S
+    │
+    ├─ @tool call_monitor_a2a → _call_subagent
+    │     │ httpx header: X-Amzn-Bedrock-AgentCore-Runtime-Session-Id: S
+    │     ▼
+    │   Monitor A2A Runtime (microVM 키 S 재사용)
+    │     └─ LazyExecutor._built=True (real agent + MCP client 캐시)
+    │
+    └─ @tool call_incident_a2a → _call_subagent
+          │ httpx header: ... Session-Id: S
+          ▼
+        Incident A2A Runtime (microVM 키 S 재사용)
+          └─ LazyExecutor._built=True
+```
+
+##### 시연 — 같은 session-id 로 2회 invoke
+
+```bash
+SESSION="workshop-$(uuidgen | tr -d -)"    # 41자 (AgentCore 제약 ≥ 33)
+
+# 1st invoke — cold (3 microVM 모두 새로)
+uv run agents/supervisor/runtime/invoke_runtime.py --query "현재 상황 진단해줘" --session-id "$SESSION"
+
+# 2nd invoke — warm (3 microVM 모두 재사용)
+uv run agents/supervisor/runtime/invoke_runtime.py --query "현재 상황 진단해줘" --session-id "$SESSION"
+```
+
+2026-05-12 실측: **44.6s (cold) → 28.4s (warm)**, **-36%** — microVM cold-start + LazyExecutor 첫 build 절감이 핵심. Bedrock LLM 호출 자체는 변동 없음.
+
+자세한 — host CLI / container `_call_subagent` 핵심 코드, 측정 분해 (Supervisor + monitor_a2a + incident_a2a 각 ~5s 절감 출처), caveat 4종 (Bedrock prompt cache 와 독립 / idle 만료 / 길이 제약 / 동시성 위험): [`phase5_detail.md §2`](phase5_detail.md#2-session-id-전파--내부-구조--실측--caveat).
+
+### 2-5. 정리 / Teardown
+
+```bash
+# reverse 순서 (의존 역순)
+bash agents/supervisor/runtime/teardown.sh
+bash agents/incident_a2a/runtime/teardown.sh
+bash agents/monitor_a2a/runtime/teardown.sh
+```
+
+각 teardown 6 step (Runtime → DELETED 대기 → OAuth provider → ECR → IAM Role → CW Log) + repo root `.env` 의 prefixed entry cleanup (`SUPERVISOR_*` / `INCIDENT_A2A_*` / `MONITOR_A2A_*`) + 다른 phase 자원 보존 verify (Phase 0/2/4 + 다른 Phase 5 sub-agent).
+
+> Phase 5 의 infra/ stack 0 → CFN stack teardown 무. Phase 0/2/4 의 stack 은 phase 별 정리 (Phase 4: `bash infra/s3-lambda/teardown.sh`, Phase 2: `bash infra/cognito-gateway/teardown.sh`).
+
+---
+
+## 3. 무엇을 만드나   *(~5 min read)*
 
 | 산출물 | 위치 | 비고 |
 |---|---|---|
@@ -16,7 +259,7 @@
 | **Monitor A2A Runtime** | `agents/monitor_a2a/runtime/agentcore_runtime.py` | `serve_a2a(LazyMonitorExecutor())` — A2A 프로토콜 서버. JWT inbound (Phase 2 Client). Phase 4 `monitor/shared/` 직접 재사용 (Option G) |
 | **Incident A2A Runtime** | `agents/incident_a2a/runtime/agentcore_runtime.py` | 동일 `serve_a2a` 패턴. Phase 4 `monitor/shared/` (helper) + `incident/shared/` (truth) 모두 import (Option G) |
 | **3 deploy 스크립트** | `agents/{supervisor,monitor_a2a,incident_a2a}/runtime/deploy_runtime.py` | 5 또는 6 단계. shared/ + `_shared_debug/` build context copy → toolkit configure → launch → IAM extras + OAuth provider → READY → repo root `.env` 저장 (prefixed) |
-| **Operator CLI 통합** | `agents/supervisor/runtime/invoke_runtime.py` | boto3 `invoke_agent_runtime` (SigV4) — Operator + admin 통합 진입점. Phase 4 invoke_runtime 패턴 carry-over. `--session-id` 옵션으로 3-layer warm container 재사용 (§3-4) |
+| **Operator CLI 통합** | `agents/supervisor/runtime/invoke_runtime.py` | boto3 `invoke_agent_runtime` (SigV4) — Operator + admin 통합 진입점. Phase 4 invoke_runtime 패턴 carry-over. `--session-id` 옵션으로 3-layer warm container 재사용 (§2-4 Session-Id 전파) |
 | **3 teardown** | `agents/{supervisor,monitor_a2a,incident_a2a}/runtime/teardown.sh` | 6 step reverse + Phase 0/2/3/4 자원 + 다른 Phase 5 자원 보존 verify |
 
 **Phase 5 가 새로 만드는 AWS 자원 (infra stack 0)**:
@@ -34,18 +277,7 @@
 
 ---
 
-## 왜 필요한가
-
-| 동기 | Phase 4 한계 | Phase 5 해결 |
-|---|---|---|
-| LLM-driven orchestration | sequential CLI = hardcoded routing (Monitor → Incident 고정) | Supervisor LLM 이 system_prompt 의 정책 따라 어떤 sub-agent 를 언제 호출할지 결정 — query 에 따라 routing 달라짐 |
-| Multi-agent transport | CLI 가 boto3 SIGV4 로 각 Runtime 직접 호출 — caller 가 응답 통합 책임 | A2A 프로토콜 (JSON-RPC over HTTP + AgentCard discovery + Bearer JWT) — Supervisor 가 caller-as-LLM-tool 패턴 (Strands `@tool` wrapping `a2a.client`) |
-| 자원 확장 비용 | Cognito Client 분리 시 보안 자원 +N | **Option X**: Phase 2 Client 재사용 (sub-agent JWT inbound 통과) — Cognito 추가 자원 0 |
-| 코드 중복 | Phase 4 shared/ 가 sub-agent A2A 변형에 그대로 필요 | **Option G**: Phase 4 `monitor/shared` + `incident/shared` 직접 import + build context copy — 새 phase 의 코드는 A2A wrap 만 |
-
----
-
-## 어떻게 동작
+## 4. 어떻게 동작   *(~15 min read)*
 
 ### `serve_a2a + LazyExecutor` (AWS canonical pattern)
 
@@ -183,265 +415,7 @@ Supervisor Runtime (HTTP, port 8080)
 
 ---
 
-## 진행 단계
-
-### 1. 사전 확인
-
-- Phase 0 완료 (EC2 + 2 alarm alive — `payment-${DEMO_USER}-*`).
-- Phase 2 완료 (Cognito stack + Gateway alive — `COGNITO_CLIENT_ID` / `GATEWAY_URL` 등 root `.env`).
-- Phase 4 의 `infra/s3-lambda/deploy.sh` 완료 (storage Lambda + Gateway Target `s3-storage` alive — incident 의존).
-- Phase 4 의 `agents/monitor/shared/` + `agents/incident/shared/` 가 repo 에 존재 (Option G — 코드 source).
-- AWS 자격 증명 + Docker daemon + `uv sync`.
-
-> **Phase 3/4 Runtime 미alive 도 OK**: Phase 5 는 Phase 3/4 의 *코드만* 재사용. Phase 3 Monitor Runtime / Phase 4 Incident Runtime 자체가 alive 일 필요 없음 (Phase 5 가 별 Runtime — `*_a2a`).
-
-### 2. Deploy (3 단계 sequential)
-
-```bash
-# Step 1 — Monitor A2A (의존 없음)
-uv run agents/monitor_a2a/runtime/deploy_runtime.py
-
-# Step 2 — Incident A2A (의존 없음)
-uv run agents/incident_a2a/runtime/deploy_runtime.py
-
-# Step 3 — Supervisor (sub-agent ARN cross-load 후 마지막)
-uv run agents/supervisor/runtime/deploy_runtime.py
-```
-
-각 deploy 5-10분 (cold start) / ~52초 (warm — ECR layer cache). 각 단계마다:
-- shared/ + `_shared_debug/` build context copy (Option G + Phase 3/4 parity)
-- toolkit `Runtime.configure()` — sub-agent 는 `protocol="A2A"` + JWT authorizer, supervisor 는 `protocol="HTTP"` + authorizer 미설정 (SigV4 default)
-- `Runtime.launch()` — ECR build + push + Runtime 생성 + env_vars 주입 (`DEBUG` 호스트 값 forward 포함)
-- IAM inline policy + `OAuth2CredentialProvider` (Phase 2 Client 재사용)
-- READY 대기 + repo root `.env` 갱신 (`MONITOR_A2A_*` / `INCIDENT_A2A_*` / `SUPERVISOR_*` prefix)
-
-Supervisor deploy 의 step [2/6] 가 **sub-agent ARN cross-load** 수행 — root `.env` 에서 `MONITOR_A2A_RUNTIME_ARN` + `INCIDENT_A2A_RUNTIME_ARN` 직접 read 후 Supervisor container 의 env_vars 로 주입.
-
-### 3. 검증
-
-#### 3-1. End-to-end smoke (Operator → Supervisor → 2 sub-agents)
-
-```bash
-uv run agents/supervisor/runtime/invoke_runtime.py --query "현재 상황 진단해줘"
-```
-
-성공 시 출력 (실측 — 41.9초, 31,572 tokens [3 Runtime 합산], us-east-1):
-
-```json
-{
-  "summary": "현재 유효 알람 1건 (payment-bob-status-check, P1) 발생 중입니다. ...",
-  "monitor": "라이브 알람 총 2개 중 real 1개 (payment-bob-status-check), noise 1개 ...",
-  "incidents": [
-    {
-      "alarm": "payment-bob-status-check",
-      "diagnosis": "payment 서비스 EC2 인스턴스의 status check 실패. Kernel panic ...",
-      "severity": "P1",
-      "recommended_actions": [
-        "describe instance status via aws ec2 describe-instance-status",
-        "reboot instance within first 5 minutes",
-        ...
-      ]
-    }
-  ],
-  "next_steps": [
-    "Run aws ec2 describe-instance-status for payment-bob instance immediately",
-    ...
-  ]
-}
-
-📊 Monitor        — Total: 8,471  | Input: 934   | Output: 523   | Cache R/W: 3,507/3,507
-📊 Incident       — Total: 6,948  | Input: 1,569 | Output: 379   | Cache R/W: 2,500/2,500
-📊 Supervisor     — Total: 16,153 | Input: 2,509 | Output: 1,068 | Cache R/W: 8,384/4,192
-📊 Combined       — Total: 31,572 | Input: 5,012 | Output: 1,970 | Cache R/W: 14,391/10,199
-✅ 완료 (41.9초)
-```
-
-token_usage SSE event 가 3 Runtime 별 (Monitor / Incident / Supervisor) + Combined 합산 4 line 으로 분해 표시 — 워크샵 청중이 multi-agent token cost 의 분포 + cache hit ratio 를 한눈에 파악 가능.
-
-#### 3-2. Prompt caching 확인 — 같은 query 재호출
-
-5분 이내 같은 query 로 다시 invoke:
-
-```bash
-uv run agents/supervisor/runtime/invoke_runtime.py --query "현재 상황 진단해줘"
-```
-
-Cache R/W 가 `0/0` → `<x>/0` (warm) 로 변동 — Supervisor 의 system_prompt + tool schema cache hit. Layer 1 (`cache_tools="default"`) + Layer 2 (system prompt cachePoint) — Phase 3/4 와 동일 패턴.
-
-> sub-agent 의 cache 는 LazyExecutor 의 `self._built` 게이트 덕에 두 번째 invocation 부터 hit (placeholder 가 real agent 로 한번만 build).
-
-#### 3-3. DEBUG 모드 — host (operator timeline) + container (per-LLM-call) 양면
-
-두 layer 가 독립적으로 toggle 가능. host = 운영자 wall-clock 4 시점, container = LLM 내부 per-call detail.
-
-| Layer | 활성 | 출력 surface | 보이는 trace |
-|---|---|---|---|
-| **host** (invoke_runtime.py) | `DEBUG=1 uv run agents/supervisor/runtime/invoke_runtime.py ...` (shell env, **재배포 X**) | stdout (같은 터미널) | `HTTP response 도착` / `first SSE byte (TTFT)` / `first text token` / `token_usage event` 4 timing |
-| **container** (3 Runtime) | `DEBUG=1 uv run agents/.../deploy_runtime.py` (deploy 시 baked in container) | CloudWatch logs (별 터미널 tail) | per-LLM-call TTFT / usage / message complete (tool_use·tool_result) / FlowHook BeforeModel·BeforeToolCall |
-
-##### host DEBUG (재배포 X)
-
-`agents/supervisor/runtime/invoke_runtime.py` 가 `_shared_debug.dprint` 4 시점 timing 출력:
-
-```bash
-DEBUG=1 uv run agents/supervisor/runtime/invoke_runtime.py --query "현재 상황 진단해줘"
-```
-
-DEBUG off 시 (`uv run ...` 단독) dprint 가 no-op — 기존 출력 동일.
-
-##### container DEBUG (재배포 필요)
-
-3 Runtime 모두 DEBUG=1 환경변수로 재배포 — 의존성 역순 (sub-agent 먼저, Supervisor 마지막):
-
-```bash
-DEBUG=1 uv run agents/monitor_a2a/runtime/deploy_runtime.py
-DEBUG=1 uv run agents/incident_a2a/runtime/deploy_runtime.py
-DEBUG=1 uv run agents/supervisor/runtime/deploy_runtime.py
-```
-
-각 deploy 직후 status:
-```
-DEBUG 모드:        ACTIVE (CloudWatch logs 에 FlowHook trace 출력)
-```
-
-read-only 검증:
-```bash
-set -a; source .env; set +a
-for ID in "$SUPERVISOR_RUNTIME_ID" "$MONITOR_A2A_RUNTIME_ID" "$INCIDENT_A2A_RUNTIME_ID"; do
-  aws bedrock-agentcore-control get-agent-runtime --agent-runtime-id "$ID" \
-    --region "$AWS_REGION" --query 'environmentVariables.DEBUG' --output text
-done
-# 3 모두 "1" 출력이면 ON
-```
-
-invoke 후 각 Runtime CloudWatch tail (별 터미널 권장 — 또는 `--since 5m` 으로 사후 조회):
-
-```bash
-aws logs tail "/aws/bedrock-agentcore/runtimes/${SUPERVISOR_RUNTIME_ID}-DEFAULT"   --since 5m --region "$AWS_REGION" --format short | grep -E "TTFT|usage total|🔧 toolUse"
-aws logs tail "/aws/bedrock-agentcore/runtimes/${MONITOR_A2A_RUNTIME_ID}-DEFAULT"  --since 5m --region "$AWS_REGION" --format short | grep -E "TTFT|usage total"
-aws logs tail "/aws/bedrock-agentcore/runtimes/${INCIDENT_A2A_RUNTIME_ID}-DEFAULT" --since 5m --region "$AWS_REGION" --format short | grep -E "TTFT|usage total"
-```
-
-확인 가능 trace:
-- `[DEBUG Bedrock → Supervisor] call #N TTFT XXXms` — per-LLM-call 첫 토큰까지
-- `[DEBUG Bedrock → Supervisor] usage total=X in=X out=X cacheR=X cacheW=X` — call 별 / 누적
-- `┏━━━ message complete (role=assistant) 🔧 toolUse: call_monitor_a2a({...})` — tool 선택 visualization
-- `[DEBUG Supervisor → Gateway] tool call: ...` — FlowHook BeforeToolCall (Supervisor 에서 "Gateway" 라벨이 "sub-agent A2A" 의미로 재해석됨)
-
-> A2A protocol 의 stream loop 는 `StrandsA2AExecutor` 내부 (우리가 소유 X) → sub-agent 의 `dump_stream_event` 호출 부재. FlowHook 의 BeforeModel + AfterModel + BeforeToolCall 만으로 가시화 (Phase 4 대비 message complete trace 한 단계 적음).
-
-##### 양면 timeline worked example
-
-운영자 입장에선 host (4 timing) 가 enough; deep debugging (어느 sub-agent 가 느린지, 어느 LLM call 이 cache miss 했는지) 시 container 도 enable. 실측한 34.6초 invoke 의 host stdout + Supervisor container per-LLM-call breakdown 표 + 핵심 통찰 (Bedrock LLM 본체 3.1s vs sub-agent A2A 24s) — [`phase5_detail.md §1`](phase5_detail.md#1-양면-timeline-worked-example-debug-observability).
-
-자세한 trace 의미: [`debug_mode.md`](debug_mode.md).
-
-#### 3-4. Session-Id 전파 — 3 layer warm container 재사용
-
-Phase 3/4 단독 invoke 의 `--session-id` 패턴이 Phase 5 에 3 layer 로 확장. Operator 가 동일 session-id 로 재호출하면 Supervisor + monitor_a2a + incident_a2a 3 microVM 모두 warm 재사용.
-
-##### 전파 경로
-
-```
-Operator CLI (--session-id S)
-    │ boto3.invoke_agent_runtime(runtimeSessionId=S)
-    ▼ wire header: X-Amzn-Bedrock-AgentCore-Runtime-Session-Id: S
-Supervisor Runtime (microVM 키 S 재사용)
-    │ AgentCore SDK 가 inbound header 를 ContextVar 에 set
-    │ → BedrockAgentCoreContext.get_session_id() == S
-    │
-    ├─ @tool call_monitor_a2a → _call_subagent
-    │     │ httpx header: X-Amzn-Bedrock-AgentCore-Runtime-Session-Id: S
-    │     ▼
-    │   Monitor A2A Runtime (microVM 키 S 재사용)
-    │     └─ LazyExecutor._built=True (real agent + MCP client 캐시)
-    │
-    └─ @tool call_incident_a2a → _call_subagent
-          │ httpx header: ... Session-Id: S
-          ▼
-        Incident A2A Runtime (microVM 키 S 재사용)
-          └─ LazyExecutor._built=True
-```
-
-##### 시연 — 같은 session-id 로 2회 invoke
-
-```bash
-SESSION="workshop-$(uuidgen | tr -d -)"    # 41자 (AgentCore 제약 ≥ 33)
-
-# 1st invoke — cold (3 microVM 모두 새로)
-uv run agents/supervisor/runtime/invoke_runtime.py --query "현재 상황 진단해줘" --session-id "$SESSION"
-
-# 2nd invoke — warm (3 microVM 모두 재사용)
-uv run agents/supervisor/runtime/invoke_runtime.py --query "현재 상황 진단해줘" --session-id "$SESSION"
-```
-
-2026-05-12 실측: **44.6s (cold) → 28.4s (warm)**, **-36%** — microVM cold-start + LazyExecutor 첫 build 절감이 핵심. Bedrock LLM 호출 자체는 변동 없음.
-
-자세한 — host CLI / container `_call_subagent` 핵심 코드, 측정 분해 (Supervisor + monitor_a2a + incident_a2a 각 ~5s 절감 출처), caveat 4종 (Bedrock prompt cache 와 독립 / idle 만료 / 길이 제약 / 동시성 위험): [`phase5_detail.md §2`](phase5_detail.md#2-session-id-전파--내부-구조--실측--caveat).
-
-### 4. 정리
-
-```bash
-# reverse 순서 (의존 역순)
-bash agents/supervisor/runtime/teardown.sh
-bash agents/incident_a2a/runtime/teardown.sh
-bash agents/monitor_a2a/runtime/teardown.sh
-```
-
-각 teardown 6 step (Runtime → DELETED 대기 → OAuth provider → ECR → IAM Role → CW Log) + repo root `.env` 의 prefixed entry cleanup (`SUPERVISOR_*` / `INCIDENT_A2A_*` / `MONITOR_A2A_*`) + 다른 phase 자원 보존 verify (Phase 0/2/4 + 다른 Phase 5 sub-agent).
-
-> Phase 5 의 infra/ stack 0 → CFN stack teardown 무. Phase 0/2/4 의 stack 은 phase 별 정리 (Phase 4: `bash infra/s3-lambda/teardown.sh`, Phase 2: `bash infra/cognito-gateway/teardown.sh`).
-
----
-
-## Bedrock prompt cache 재현
-
-같은 session-id 로 2회 invoke 하여 1차 = cache write + 부분 read / 2차 (warm) = pure read 확인.
-
-**전제**: Supervisor Runtime 배포된 상태. 미배포 / system_prompt 변경 시 먼저 재배포:
-
-```bash
-cd agents/supervisor/runtime && uv run deploy_runtime.py && cd -
-```
-
-**1) Session ID 생성** (AgentCore Runtime 의 session ID 는 33자 이상 필수):
-
-```bash
-SESSION="cache-repro-$(date +%s)-padding-to-meet-the-min-33-char-id-requirement"
-echo "$SESSION"
-```
-
-**2) 1차 invoke (cold)**:
-
-```bash
-uv run agents/supervisor/runtime/invoke_runtime.py --query "현재 상황 진단해줘" --session-id "$SESSION"
-```
-
-기대: `Cache R/W: ~8k/~4k` · latency 50-60초. R 양수인 이유 — Strands agent loop 가 `call_monitor_a2a` → 응답 처리 → `call_incident_a2a` → 응답 처리 → final synthesis 의 multi-LLM-call 구조 → 같은 run 내 후속 LLM 호출이 직전 호출의 cache 를 hit.
-
-**3) 2차 invoke (warm — 5분 이내, 동일 SESSION)**:
-
-```bash
-uv run agents/supervisor/runtime/invoke_runtime.py --query "다시 현재 상황 진단해줘" --session-id "$SESSION"
-```
-
-기대: `Cache R/W: ~12k/0` · latency 30-40초. W=0 = system_prompt + tool schema + 이전 turn conversation 모두 cache hit (Bedrock prompt cache TTL 5분).
-
-**실측 (2026-05-12, us-east-1, DEMO_USER=bob)**:
-
-| invoke | Total | Input | Output | Cache R/W | Latency |
-|---|---|---|---|---|---|
-| 1차 (cold) | 15,165 | 2,603 | 745 | 7,878 / 3,939 | 53.9s |
-| 2차 (warm) | 14,834 | 2,278 | 739 | 11,817 / 0 | 30.7s |
-
-**Cache 가 작동하기 위한 조건**:
-- `agents/supervisor/shared/agent.py` 의 `BedrockModel(cache_tools="default")` + `system_prompt=[..., SystemContentBlock(cachePoint={"type": "default"})]`
-- system_prompt + tool schema 합 ≥ Sonnet 4.6 cache 임계값 (~2,048 tokens). 현재 `agents/supervisor/shared/prompts/system_prompt.md` = 3,566 tokens (1.7× margin)
-- 임계값 미달 시 `cachePoint` silently rejected → `Cache R/W: 0/0` (error 미발생, 진단 어려움)
-
----
-
-## Reference
+## 5. References
 
 | 자료 | 용도 |
 |---|---|
@@ -454,20 +428,9 @@ uv run agents/supervisor/runtime/invoke_runtime.py --query "다시 현재 상황
 | [`agents/{*}/runtime/deploy_runtime.py`](../../agents/) | 5 또는 6 단계 배포 — Option G build context + DEBUG forward |
 | [`agents/{*}/runtime/teardown.sh`](../../agents/) | 6 step reverse + negative check (다른 Phase 5 sub-agent 보존) |
 | [`debug_mode.md`](debug_mode.md) | DEBUG=1 시 3 Runtime 모두 FlowHook trace |
-| [`phase5_detail.md`](phase5_detail.md) | §3-3 worked example timeline + §3-4 session-id 내부 구조·실측·caveat |
+| [`phase5_detail.md`](phase5_detail.md) | 양면 timeline worked example + Session-Id 전파 내부 구조·실측·caveat |
 | [`phase4.md`](phase4.md) | Phase 4 Incident — Option G 의 source. sequential CLI 비교점 |
 | [`../design/phase6a.md`](../design/phase6a.md) | 의사결정 로그 (D1~D6 + Option X / G / Change 연기) |
 | [`../research/a2a_intro.md`](../research/a2a_intro.md) | A2A 프로토콜 직관 + serve_a2a canonical pattern (§10) |
 
 ---
-
-## 알려진 제약
-
-- **`serve_a2a` 강제**: Strands `A2AServer.to_fastapi_app()` 단독으로 Bedrock AgentCore Runtime 에 deploy 하면 `BedrockCallContextBuilder` 미부착 → workload-token ContextVar 빈 채로 `@requires_access_token` 실패 (HTTP 424). 반드시 `bedrock_agentcore.runtime.serve_a2a()` 진입점 사용.
-- **`LazyExecutor` 강제**: OAuth-dependent agent 는 module init 시 workload-token 없음 → `Agent(name=..., tools=[real_tools])` 가 import 시점에 token 호출 → ValueError. placeholder agent 로 init 후 첫 `execute()` 에서 real agent build.
-- **Option X 의 scope 미검증**: AgentCore JWT authorizer 가 `aud` 만 검증, `scope` 미검증 — 다른 scope 의 토큰도 통과 가능 (보안 모델 의존도가 client_id 단위). 별 audience 분리 필요 시 추가 Cognito client 생성 (Option X 폐기 변형).
-- **3 OAuth provider 중복**: 각 Runtime 마다 `aiops_demo_${user}_{name}_gateway_provider` 별도 생성 — Cognito Client M2M credentials 는 모두 같지만 AgentCore 가 provider 단위로만 token 발급. Cognito 자원 자체는 1개, provider record 만 3개.
-- **Change Agent 부재**: phase6a.md design 의 D6 (Change Agent + deployments-storage Lambda) 는 후속 phase 로 연기. Phase 5 = 2 sub-agent (monitor + incident) 만. 3+ sub-agent topology 시연은 별 phase.
-- **Phase 4 dependency**: Option G 가 Phase 4 코드 directory 의 file 존재만 요구 (`agents/monitor/shared/` + `agents/incident/shared/`). Phase 4 Runtime 자체는 alive 일 필요 없음 — build context copy 만. Phase 4 의 storage Lambda (`infra/s3-lambda/`) 는 alive 필요 (incident sub-agent 의 MCP tool 의존).
-- **AgentCard caching 부재**: Supervisor 의 `_call_subagent` 가 매 호출마다 `/.well-known/agent-card.json` fetch. sub-agent 호출이 보통 2-3회/query 이므로 부담 작음 — 그러나 high-throughput orchestrator 시 module-level cache 검토 가치 있음.
-- **Bedrock prompt cache 임계값 (Sonnet 4.6)**: cache 최소 임계값 ~2,048 tokens — 4.5 의 1,024 보다 2배. 미달 시 `cachePoint` silently rejected (error 없이 `Cache R/W: 0/0`). 2026-05-12 실측에서 system_prompt 1,016 → 3,566 tokens 확장으로 해결. 자세한 재현 절차 §「Bedrock prompt cache 재현」.
