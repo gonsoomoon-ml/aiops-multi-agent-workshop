@@ -92,6 +92,29 @@ def parse_sse_event(line_bytes: bytes) -> dict | None:
         return None
 
 
+# Phase 5b — token usage 5 키 (cache R/W 포함). Combined 계산 + zero-fill 에 재사용.
+_USAGE_KEYS = ["inputTokens", "outputTokens", "totalTokens",
+               "cacheReadInputTokens", "cacheWriteInputTokens"]
+
+
+def _format_usage_line(label: str, usage: dict, calls: int | None = None) -> str:
+    """4-line summary 의 한 줄 — Monitor / Incident / Supervisor / Combined 공통.
+
+    ``calls`` 가 2 이상이면 ``(N회)`` suffix 추가 — Incident 가 alarm N개 병렬 호출된
+    경우 가시화. label 폭 14자 padding 으로 4 줄 시각적 정렬.
+    """
+    suffix = f" ({calls}회)" if calls and calls > 1 else ""
+    head = f"{label}{suffix}"
+    return (
+        f"{DIM}📊 {head:<14} — "
+        f"Total: {usage.get('totalTokens', 0):,} | "
+        f"Input: {usage.get('inputTokens', 0):,} | "
+        f"Output: {usage.get('outputTokens', 0):,} | "
+        f"Cache R/W: {usage.get('cacheReadInputTokens', 0):,}/"
+        f"{usage.get('cacheWriteInputTokens', 0):,}{NC}"
+    )
+
+
 def main() -> None:
     args = parse_args()
     if not RUNTIME_ARN:
@@ -127,7 +150,10 @@ def main() -> None:
 
     content_type = response.get("contentType", "")
     if "text/event-stream" in content_type:
-        usage_summary = None
+        usage_summary: dict | None = None
+        # Phase 5b — sub-agent usage 누적 (Supervisor 가 ``subagent_usage`` SSE 로 yield).
+        # 구조: {"monitor": {"usage": {...}, "calls": N}, "incident": {...}}
+        subagent_usages: dict[str, dict] = {}
         first_byte_ts = first_text_ts = None
         for line in response["response"].iter_lines(chunk_size=1):
             if first_byte_ts is None:
@@ -151,18 +177,34 @@ def main() -> None:
             elif etype == "tool_call_end":
                 elapsed = (datetime.now() - start).total_seconds()
                 print(f"{DIM}  ✅ tool 응답 도착 — {elapsed:.1f}s{NC}", flush=True)
+            elif etype == "subagent_usage":
+                agent_type = event.get("agent", "")
+                if agent_type:
+                    subagent_usages[agent_type] = {
+                        "usage": event.get("usage", {}),
+                        "calls": event.get("calls", 1),
+                    }
             elif etype == "token_usage":
                 dprint("token_usage event", f"{(datetime.now() - start).total_seconds():.2f}s", color="magenta")
                 usage_summary = event.get("usage", {})
-        if usage_summary:
+
+        # Phase 5b — 4-line token usage summary (sub-agent + Supervisor + Combined).
+        # Sub-agent 미호출 시 (단순 질의) Monitor/Incident + Combined 라인 skip — 그
+        # 경우 Supervisor 한 줄만 출력 (이전 동작 유지).
+        if subagent_usages or usage_summary:
             print()
-            print(
-                f"{DIM}📊 Tokens — Total: {usage_summary.get('totalTokens', 0):,} | "
-                f"Input: {usage_summary.get('inputTokens', 0):,} | "
-                f"Output: {usage_summary.get('outputTokens', 0):,} | "
-                f"Cache R/W: {usage_summary.get('cacheReadInputTokens', 0):,}/"
-                f"{usage_summary.get('cacheWriteInputTokens', 0):,}{NC}"
-            )
+            for atype, label in (("monitor", "Monitor"), ("incident", "Incident")):
+                entry = subagent_usages.get(atype)
+                if entry:
+                    print(_format_usage_line(label, entry["usage"], calls=entry["calls"]))
+            if usage_summary:
+                print(_format_usage_line("Supervisor", usage_summary))
+            if subagent_usages and usage_summary:
+                combined = {k: usage_summary.get(k, 0) for k in _USAGE_KEYS}
+                for entry in subagent_usages.values():
+                    for k in _USAGE_KEYS:
+                        combined[k] += entry["usage"].get(k, 0)
+                print(_format_usage_line("Combined", combined))
     else:
         body = response["response"].read().decode("utf-8")
         print(body)

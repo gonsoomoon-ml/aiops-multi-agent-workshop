@@ -45,8 +45,13 @@ payload 스키마:
 yield 스키마 (SSE):
     - ``agent_text_stream`` — LLM streaming text chunk (sub-agent tool 호출 사이의
       Supervisor 자체 토큰 + 최종 통합 응답 — system_prompt 가 JSON 형식 요청 시 JSON)
-    - ``token_usage`` — Supervisor LLM 자체의 usage 누적 (sub-agent 의 토큰은 별도
-      집계 — CloudWatch metrics 참조)
+    - ``tool_call_begin`` / ``tool_call_end`` — sub-agent tool 호출 시작/완료 (host
+      progress 시각화용 — A2A roundtrip latency 갭 가시화).
+    - ``subagent_usage`` — sub-agent (monitor/incident) 의 token usage 합산 (Phase 5b
+      — ``artifact.metadata["usage"]`` 로 받음, ``call_incident_a2a`` 병렬 호출 시
+      list 누적 후 sum). payload: ``{"agent": "monitor"|"incident", "usage": {...},
+      "calls": N}``. Client (invoke_runtime.py) 가 4-line display 에 사용.
+    - ``token_usage`` — Supervisor LLM 자체의 usage 누적 (sub-agent 토큰과 별개)
     - ``workflow_complete`` — SSE 종료 sentinel
 
 reference:
@@ -56,6 +61,7 @@ reference:
       /realestate_coordinator/agent.py:325-361 (가장 가까운 reference — Strands +
       Cognito M2M + @tool wrapping a2a.client)
 """
+import contextvars
 import os
 import sys
 from pathlib import Path
@@ -90,7 +96,7 @@ except ModuleNotFoundError:
 # DEBUG=1 시 stream event trace (TTFT + message complete + usage).
 # ``_shared_debug/`` 는 repo root sibling — deploy_runtime.py 가 build context 로 copy.
 # 컨테이너에선 /app/_shared_debug/, 로컬에선 PROJECT_ROOT/_shared_debug/ (sys.path 위 양쪽 동일 import).
-from _shared_debug import dump_stream_event  # noqa: E402
+from _shared_debug import dump_stream_event, is_debug  # noqa: E402
 
 REGION = os.environ.get("AWS_REGION", "us-west-2")
 # Option X — 단일 OAuth provider (Client 재사용, Phase 4 incident 와 동일 env 키)
@@ -104,6 +110,24 @@ INCIDENT_A2A_ARN = os.environ["INCIDENT_A2A_RUNTIME_ARN"]
 # Change Agent 는 후속 phase 로 연기 — Phase 5 는 monitor + incident 두 sub-agent 만
 
 DEFAULT_TIMEOUT = 300
+
+# inbound session-id 가 없는 경우의 invocation-scoped fallback. supervisor() entry
+# 에서 한 번 set → Monitor / Incident sub-agent 호출이 동일 fallback id 공유 →
+# 한 invocation 안에서 sub-agent microVM 재사용 가능. ContextVar 라 concurrent
+# invocation 끼리 격리.
+_fallback_session_id: contextvars.ContextVar[str] = contextvars.ContextVar(
+    "_fallback_session_id", default=""
+)
+
+# Phase 5b — sub-agent token usage stash (invocation-scoped). ``call_monitor_a2a``
+# / ``call_incident_a2a`` 가 A2A ``artifact.metadata["usage"]`` 로 받은 dict 를 여기
+# append → ``supervisor()`` 가 stream 종료 후 list 합산하여 ``subagent_usage`` SSE
+# yield. list 인 이유: ``call_incident_a2a`` 가 alarm 마다 병렬 호출될 수 있음 (Strands
+# multi-tool concurrent — system_prompt §151) → 마지막만 남기면 N-1 손실. ContextVar
+# 로 concurrent invocation 끼리 격리.
+_subagent_usage: contextvars.ContextVar[dict[str, list[dict]] | None] = contextvars.ContextVar(
+    "_subagent_usage", default=None
+)
 
 
 def _runtime_url(arn: str) -> str:
@@ -136,23 +160,25 @@ async def _fetch_a2a_token(*, access_token: str = "") -> str:
     return access_token
 
 
-async def _call_subagent(arn: str, query: str) -> str:
-    """A2A 호출 1회 — Bearer JWT + AgentCard discovery + send_message → text 응답.
+async def _call_subagent(arn: str, query: str) -> tuple[str, dict | None]:
+    """A2A 호출 1회 — Bearer JWT + AgentCard discovery + send_message → (text, usage) 응답.
 
     1. Cognito Client M2M token 획득 (`@requires_access_token`, Phase 2 재사용)
     2. httpx.AsyncClient 에 Bearer 헤더 + Session-Id 헤더 주입
     3. A2ACardResolver 로 sub-agent 의 AgentCard fetch (`/.well-known/agent-card.json`)
     4. ClientFactory 로 A2AClient 생성, send_message — Task lifecycle (working → completed)
     5. artifact[0].parts[0].root.text 추출 — sub-agent 의 최종 응답
+    6. **artifact.metadata["usage"]** 추출 (Phase 5b — sub-agent 가 부착) — None 가능
 
     Session-Id 전파: Operator → Supervisor inbound 의
     ``X-Amzn-Bedrock-AgentCore-Runtime-Session-Id`` 를 그대로 sub-agent 호출에 propagate
     (`BedrockAgentCoreContext.get_session_id()` ContextVar) → 동일 session 안 sub-agent
-    microVM warm 재사용. inbound 미제공 시 fallback uuid4 (cold per A2A call).
+    microVM warm 재사용. inbound 미제공 시 supervisor() entry 에서 set 한
+    `_fallback_session_id` 사용 → 한 invocation 안 Monitor+Incident 호출이 같은 id 공유.
     """
     bearer = await _fetch_a2a_token()
     base_url = _runtime_url(arn)
-    session_id = BedrockAgentCoreContext.get_session_id() or str(uuid4())
+    session_id = BedrockAgentCoreContext.get_session_id() or _fallback_session_id.get() or str(uuid4())
     headers = {
         "Authorization": f"Bearer {bearer}",
         "X-Amzn-Bedrock-AgentCore-Runtime-Session-Id": session_id,
@@ -173,7 +199,10 @@ async def _call_subagent(arn: str, query: str) -> str:
             if hasattr(response, "artifacts") and response.artifacts:
                 artifact = response.artifacts[0]
                 if artifact.parts:
-                    return artifact.parts[0].root.text
+                    # Phase 5b — sub-agent 가 ``add_artifact(..., metadata={"usage":
+                    # ...})`` 로 부착. 구 sub-agent (metadata 부재) 호환: usage=None.
+                    usage = (artifact.metadata or {}).get("usage")
+                    return artifact.parts[0].root.text, usage
             # fallback: history 의 agent 메시지 모으기 (02-a2a-agent-sigv4/client.py 패턴)
             if hasattr(response, "history"):
                 texts = [
@@ -181,23 +210,48 @@ async def _call_subagent(arn: str, query: str) -> str:
                     if m.role == Role.agent and m.parts
                 ]
                 if texts:
-                    return "".join(texts)
+                    return "".join(texts), None
         # 모든 event 통과 후에도 artifacts/history 없음 — Supervisor LLM 이 silent
         # failure 로 오해하지 않도록 sentinel 반환. system_prompt 가 sub-agent
         # 호출 실패 케이스 처리 정책 가짐 ("일부 sub-agent 응답 실패").
-        return f"[sub-agent {arn.split('/')[-1]}: empty response]"
+        return f"[sub-agent {arn.split('/')[-1]}: empty response]", None
+
+
+def _record_subagent_usage(agent_type: str, usage: dict | None) -> None:
+    """Phase 5b — sub-agent usage 를 ``_subagent_usage`` ContextVar list 에 append.
+
+    ``call_*_a2a`` 가 tool 반환 직전에 호출. usage None 이면 no-op (구 sub-agent 호환
+    또는 history-fallback 케이스).
+    """
+    if usage is None:
+        return
+    stash = _subagent_usage.get()
+    if stash is not None:
+        stash[agent_type].append(usage)
 
 
 @tool
 async def call_monitor_a2a(query: str) -> str:
-    """Monitor A2A sub-agent 호출 — 라이브 CloudWatch alarm 분류 (real vs noise)."""
-    return await _call_subagent(MONITOR_A2A_ARN, query)
+    """Monitor A2A sub-agent 호출 — 라이브 CloudWatch alarm 분류 (real vs noise).
+
+    sub-agent 의 token usage 는 ``_subagent_usage`` ContextVar 에 누적 (LLM 응답에는
+    미포함 — system_prompt 가 routing 판단할 때 noise 안 됨).
+    """
+    text, usage = await _call_subagent(MONITOR_A2A_ARN, query)
+    _record_subagent_usage("monitor", usage)
+    return text
 
 
 @tool
 async def call_incident_a2a(query: str) -> str:
-    """Incident A2A sub-agent 호출 — 단일 alarm 의 runbook 진단. query 는 `{"alarm_name": "..."}` JSON str."""
-    return await _call_subagent(INCIDENT_A2A_ARN, query)
+    """Incident A2A sub-agent 호출 — 단일 alarm 의 runbook 진단. query 는 `{"alarm_name": "..."}` JSON str.
+
+    sub-agent 의 token usage 는 ``_subagent_usage`` ContextVar 에 append — 병렬 호출
+    (alarm N개) 시 N entry 누적되어 ``supervisor()`` 가 sum 후 yield.
+    """
+    text, usage = await _call_subagent(INCIDENT_A2A_ARN, query)
+    _record_subagent_usage("incident", usage)
+    return text
 
 
 app = BedrockAgentCoreApp()
@@ -210,6 +264,16 @@ async def supervisor(payload: dict, context: Any) -> AsyncGenerator[dict, None]:
     Supervisor LLM 이 system_prompt 의 routing 정책 따라 sub-agent tool 들 호출 (LLM
     이 어떤 tool 을 부를지 결정 — Phase 4 의 hardcoded sequential CLI 와 다른 점).
     """
+    # inbound session-id 없으면 invocation-scoped fallback 한 번 결정 → 이어지는
+    # Monitor + Incident sub-agent 호출이 동일 id 공유 (per-call uuid4 회피).
+    if not BedrockAgentCoreContext.get_session_id():
+        _fallback_session_id.set(uuid4().hex)
+    # Phase 5b — sub-agent usage stash 초기화 (invocation-scoped). ``call_*_a2a`` 가
+    # append → stream 끝나고 sum 후 SSE yield.
+    _subagent_usage.set({"monitor": [], "incident": []})
+    if is_debug():
+        effective = BedrockAgentCoreContext.get_session_id() or _fallback_session_id.get()
+        print(f"[SESSION_TRACE] supervisor session_id={effective}", flush=True)
     query = payload.get("query") or ""
     if not query:
         yield {"type": "agent_text_stream", "text": '[error] payload 에 "query" 누락'}
@@ -255,6 +319,22 @@ async def supervisor(payload: dict, context: Any) -> AsyncGenerator[dict, None]:
             usage = metadata["usage"]
             for key in usage_totals:
                 usage_totals[key] += usage.get(key, 0)
+
+    # Phase 5b — sub-agent usage 집계 + per-agent SSE yield (Supervisor token_usage 보다
+    # 먼저 emit — client display 의 자연스러운 순서 Monitor → Incident → Supervisor →
+    # Combined). 빈 list 면 skip (해당 sub-agent 호출 안 됨).
+    stash = _subagent_usage.get() or {}
+    usage_keys = list(usage_totals.keys())
+    for agent_type, usage_list in stash.items():
+        if not usage_list:
+            continue
+        aggregated = {k: sum(u.get(k, 0) for u in usage_list) for k in usage_keys}
+        yield {
+            "type": "subagent_usage",
+            "agent": agent_type,
+            "usage": aggregated,
+            "calls": len(usage_list),
+        }
 
     yield {"type": "token_usage", "usage": usage_totals}
     yield {"type": "workflow_complete", "text": ""}

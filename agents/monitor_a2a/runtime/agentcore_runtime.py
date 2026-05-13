@@ -55,8 +55,12 @@ payload 스키마 (A2A Message text part):
 
 response 스키마 (A2A Message artifact):
     LLM 의 최종 분류 결과 (자연어). caller 가 ``artifact.parts[0].root.text`` 추출 →
-    Supervisor LLM 이 sub-agent 응답으로 받음. token usage 는 별도 yield 없음 — A2A
-    protocol 이 SSE event 모델 미사용 (StrandsA2AExecutor 가 stream 내부 처리).
+    Supervisor LLM 이 sub-agent 응답으로 받음. **token usage 는 ``artifact.metadata
+    ["usage"]`` 로 노출** (Phase 5b — ``LazyMonitorExecutor`` 가 stream 중 누적 후
+    ``add_artifact`` 에 부착, Supervisor 가 operator console 의 세 agent 합산 표시
+    용으로 추출). A2A ``Artifact.metadata`` 는 protocol 의 표준 extension 슬롯
+    (a2a/types.py:1389 "Optional metadata for extensions") — Strands base executor
+    는 사용 안 함.
 
 reference:
     - https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/runtime-a2a.html
@@ -65,11 +69,14 @@ reference:
     - 02-use-cases/A2A-multi-agent-incident-response/monitoring_strands_agent (per-request
       build pattern reference — older A2AStarletteApplication 형식)
 """
+import asyncio
 import os
 import sys
 from pathlib import Path
 
+from a2a.types import Part, TextPart
 from bedrock_agentcore.runtime import serve_a2a
+from bedrock_agentcore.runtime.context import BedrockAgentCoreContext
 from bedrock_agentcore.identity.auth import requires_access_token
 from strands import Agent
 from strands.multiagent.a2a.executor import StrandsA2AExecutor
@@ -93,6 +100,8 @@ except ModuleNotFoundError:
     from agents.monitor.shared.agent import create_agent          # noqa: E402
     from agents.monitor.shared.mcp_client import create_mcp_client  # noqa: E402
     from agents.monitor.shared.modes import MODE_CONFIG             # noqa: E402
+
+from _shared_debug import is_debug  # noqa: E402
 
 OAUTH_PROVIDER_NAME = os.environ["OAUTH_PROVIDER_NAME"]
 COGNITO_GATEWAY_SCOPE = os.environ["COGNITO_GATEWAY_SCOPE"]
@@ -147,20 +156,67 @@ class LazyMonitorExecutor(StrandsA2AExecutor):
 
     AgentCard 는 init 시 placeholder agent (tools=[]) 에서 도출 — caller 는 AgentCard 의
     url 만 필요 (skill 자세 정보 무관, send_message 가 protocol 통신).
+
+    Phase 5b 확장 — sub-agent token usage 를 A2A ``Artifact.metadata`` 로 노출:
+      - Strands ``StrandsA2AExecutor`` 의 ``_handle_streaming_event`` 는 ``data`` /
+        ``result`` 두 키만 처리 → Bedrock raw ``event.event.metadata.usage`` 는 폐기.
+      - 우리는 동 메서드 override 로 usage 누적 후 ``super()`` 위임 (text 스트리밍
+        동작 보존), ``_handle_agent_result`` override 로 ``add_artifact(...,
+        metadata={"usage": ...})`` 부착.
+      - Supervisor (caller) 가 ``artifact.metadata["usage"]`` 추출 → operator console
+        에 세 agent cache R/W 합산 표시 (Phase 5 의 prompt cache flywheel 학습 가시화).
+      - Concurrency: ``self._usage_totals`` 는 instance attr. AgentCore 가 session 당
+        microVM 분리 + serve_a2a 가 request 직렬 처리하므로 demo 안전. Prod 화 시
+        ``contextvars.ContextVar`` 로 옮길 것.
     """
 
     def __init__(self):
         placeholder = Agent(name=AGENT_NAME, description=AGENT_DESC, tools=[])
         super().__init__(agent=placeholder)
         self._built = False
+        # concurrent 첫 request 들이 동시에 lazy build 들어가는 race 방지 (double-checked
+        # locking — 일반적 build 후 path 는 lock 미진입, 첫 race 만 직렬화).
+        self._build_lock = asyncio.Lock()
+        self._usage_totals: dict[str, int] = {}
 
     async def execute(self, context, event_queue):
+        if is_debug():
+            print(f"[SESSION_TRACE] {AGENT_NAME} session_id={BedrockAgentCoreContext.get_session_id()}", flush=True)
+        # request 시작마다 누적기 reset — 이전 request 잔재 차단 (instance attr 공유).
+        self._usage_totals = {
+            "inputTokens": 0, "outputTokens": 0, "totalTokens": 0,
+            "cacheReadInputTokens": 0, "cacheWriteInputTokens": 0,
+        }
         if not self._built:
-            # request 시점 — `serve_a2a` 의 BedrockCallContextBuilder 가 workload-token
-            # 을 ContextVar 에 채움 → `requires_access_token` decorator OK.
-            self.agent = await _build_real_monitor_agent()
-            self._built = True
+            async with self._build_lock:
+                if not self._built:  # double-check inside lock
+                    # request 시점 — `serve_a2a` 의 BedrockCallContextBuilder 가
+                    # workload-token 을 ContextVar 에 채움 → `requires_access_token` OK.
+                    self.agent = await _build_real_monitor_agent()
+                    self._built = True
         await super().execute(context, event_queue)
+
+    async def _handle_streaming_event(self, event, updater):
+        # Bedrock raw event 의 token usage 누적 (Strands base 가 폐기 → 우리가 가로챔).
+        meta = event.get("event", {}).get("metadata", {})
+        if "usage" in meta:
+            usage = meta["usage"]
+            for k in self._usage_totals:
+                self._usage_totals[k] += usage.get(k, 0)
+        # 기존 동작 (text streaming + result dispatch) 은 base 위임.
+        await super()._handle_streaming_event(event, updater)
+
+    async def _handle_agent_result(self, result, updater):
+        # base 의 add_artifact 호출을 우리가 직접 — metadata 부착 위해 inline 복제.
+        # final_content 가 empty 면 base 와 동일하게 artifact 생략 (rare 케이스 — 그
+        # 때는 usage 도 손실되지만 운영상 큰 문제 없음).
+        if final_content := str(result):
+            await updater.add_artifact(
+                [Part(root=TextPart(text=final_content))],
+                name="agent_response",
+                metadata={"usage": self._usage_totals},
+            )
+        await updater.complete()
 
 
 if __name__ == "__main__":

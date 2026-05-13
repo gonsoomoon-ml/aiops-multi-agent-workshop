@@ -225,7 +225,7 @@ Supervisor deploy 의 step [2/6] 가 **sub-agent ARN cross-load** 수행 — roo
 uv run agents/supervisor/runtime/invoke_runtime.py --query "현재 상황 진단해줘"
 ```
 
-성공 시 출력 (실측 — 48.0초, 7,045 tokens, us-east-1):
+성공 시 출력 (실측 — 41.9초, 31,572 tokens [3 Runtime 합산], us-east-1):
 
 ```json
 {
@@ -249,11 +249,14 @@ uv run agents/supervisor/runtime/invoke_runtime.py --query "현재 상황 진단
   ]
 }
 
-📊 Tokens — Total: 7,045 | Input: 6,266 | Output: 779 | Cache R/W: 0/0
-✅ 완료 (48.0초)
+📊 Monitor        — Total: 8,471  | Input: 934   | Output: 523   | Cache R/W: 3,507/3,507
+📊 Incident       — Total: 6,948  | Input: 1,569 | Output: 379   | Cache R/W: 2,500/2,500
+📊 Supervisor     — Total: 16,153 | Input: 2,509 | Output: 1,068 | Cache R/W: 8,384/4,192
+📊 Combined       — Total: 31,572 | Input: 5,012 | Output: 1,970 | Cache R/W: 14,391/10,199
+✅ 완료 (41.9초)
 ```
 
-token_usage 의 `Cache R/W` 는 **Supervisor LLM 자체** 만 추적 — sub-agent 의 token + cache 는 별도 (CloudWatch metrics 또는 sub-agent 의 자체 log).
+token_usage SSE event 가 3 Runtime 별 (Monitor / Incident / Supervisor) + Combined 합산 4 line 으로 분해 표시 — 워크샵 청중이 multi-agent token cost 의 분포 + cache hit ratio 를 한눈에 파악 가능.
 
 #### 3-2. Prompt caching 확인 — 같은 query 재호출
 
@@ -391,6 +394,53 @@ bash agents/monitor_a2a/runtime/teardown.sh
 
 ---
 
+## Bedrock prompt cache 재현
+
+같은 session-id 로 2회 invoke 하여 1차 = cache write + 부분 read / 2차 (warm) = pure read 확인.
+
+**전제**: Supervisor Runtime 배포된 상태. 미배포 / system_prompt 변경 시 먼저 재배포:
+
+```bash
+cd agents/supervisor/runtime && uv run deploy_runtime.py && cd -
+```
+
+**1) Session ID 생성** (AgentCore Runtime 의 session ID 는 33자 이상 필수):
+
+```bash
+SESSION="cache-repro-$(date +%s)-padding-to-meet-the-min-33-char-id-requirement"
+echo "$SESSION"
+```
+
+**2) 1차 invoke (cold)**:
+
+```bash
+uv run agents/supervisor/runtime/invoke_runtime.py --query "현재 상황 진단해줘" --session-id "$SESSION"
+```
+
+기대: `Cache R/W: ~8k/~4k` · latency 50-60초. R 양수인 이유 — Strands agent loop 가 `call_monitor_a2a` → 응답 처리 → `call_incident_a2a` → 응답 처리 → final synthesis 의 multi-LLM-call 구조 → 같은 run 내 후속 LLM 호출이 직전 호출의 cache 를 hit.
+
+**3) 2차 invoke (warm — 5분 이내, 동일 SESSION)**:
+
+```bash
+uv run agents/supervisor/runtime/invoke_runtime.py --query "다시 현재 상황 진단해줘" --session-id "$SESSION"
+```
+
+기대: `Cache R/W: ~12k/0` · latency 30-40초. W=0 = system_prompt + tool schema + 이전 turn conversation 모두 cache hit (Bedrock prompt cache TTL 5분).
+
+**실측 (2026-05-12, us-east-1, DEMO_USER=bob)**:
+
+| invoke | Total | Input | Output | Cache R/W | Latency |
+|---|---|---|---|---|---|
+| 1차 (cold) | 15,165 | 2,603 | 745 | 7,878 / 3,939 | 53.9s |
+| 2차 (warm) | 14,834 | 2,278 | 739 | 11,817 / 0 | 30.7s |
+
+**Cache 가 작동하기 위한 조건**:
+- `agents/supervisor/shared/agent.py` 의 `BedrockModel(cache_tools="default")` + `system_prompt=[..., SystemContentBlock(cachePoint={"type": "default"})]`
+- system_prompt + tool schema 합 ≥ Sonnet 4.6 cache 임계값 (~2,048 tokens). 현재 `agents/supervisor/shared/prompts/system_prompt.md` = 3,566 tokens (1.7× margin)
+- 임계값 미달 시 `cachePoint` silently rejected → `Cache R/W: 0/0` (error 미발생, 진단 어려움)
+
+---
+
 ## Reference
 
 | 자료 | 용도 |
@@ -416,9 +466,8 @@ bash agents/monitor_a2a/runtime/teardown.sh
 - **`serve_a2a` 강제**: Strands `A2AServer.to_fastapi_app()` 단독으로 Bedrock AgentCore Runtime 에 deploy 하면 `BedrockCallContextBuilder` 미부착 → workload-token ContextVar 빈 채로 `@requires_access_token` 실패 (HTTP 424). 반드시 `bedrock_agentcore.runtime.serve_a2a()` 진입점 사용.
 - **`LazyExecutor` 강제**: OAuth-dependent agent 는 module init 시 workload-token 없음 → `Agent(name=..., tools=[real_tools])` 가 import 시점에 token 호출 → ValueError. placeholder agent 로 init 후 첫 `execute()` 에서 real agent build.
 - **Option X 의 scope 미검증**: AgentCore JWT authorizer 가 `aud` 만 검증, `scope` 미검증 — 다른 scope 의 토큰도 통과 가능 (보안 모델 의존도가 client_id 단위). 별 audience 분리 필요 시 추가 Cognito client 생성 (Option X 폐기 변형).
-- **sub-agent token usage 미집계**: Supervisor 의 `token_usage` SSE event 는 Supervisor LLM 만 추적 → sub-agent 의 token 은 CloudWatch metrics 또는 sub-agent 의 자체 log 참조. Total cost 계산 시 3 Runtime 합산 필요.
 - **3 OAuth provider 중복**: 각 Runtime 마다 `aiops_demo_${user}_{name}_gateway_provider` 별도 생성 — Cognito Client M2M credentials 는 모두 같지만 AgentCore 가 provider 단위로만 token 발급. Cognito 자원 자체는 1개, provider record 만 3개.
 - **Change Agent 부재**: phase6a.md design 의 D6 (Change Agent + deployments-storage Lambda) 는 후속 phase 로 연기. Phase 5 = 2 sub-agent (monitor + incident) 만. 3+ sub-agent topology 시연은 별 phase.
 - **Phase 4 dependency**: Option G 가 Phase 4 코드 directory 의 file 존재만 요구 (`agents/monitor/shared/` + `agents/incident/shared/`). Phase 4 Runtime 자체는 alive 일 필요 없음 — build context copy 만. Phase 4 의 storage Lambda (`infra/s3-lambda/`) 는 alive 필요 (incident sub-agent 의 MCP tool 의존).
 - **AgentCard caching 부재**: Supervisor 의 `_call_subagent` 가 매 호출마다 `/.well-known/agent-card.json` fetch. sub-agent 호출이 보통 2-3회/query 이므로 부담 작음 — 그러나 high-throughput orchestrator 시 module-level cache 검토 가치 있음.
-- **Bedrock prompt cache hit 미관측 (재현 필요)**: 2026-05-12 실측에서 같은 session-id + 같은 query 연속 2회 invoke 시 Cache R/W 0/0 유지 (§3-2 예측 미실현). microVM 재사용 (host 워밍) 과 Bedrock prompt cache (invocation 단위) 는 독립적 — cache hit 시현은 single invoke 안 multi-turn 패턴이 필요. cachePoint 배치 또는 invocation 모델 재검토 가치.
+- **Bedrock prompt cache 임계값 (Sonnet 4.6)**: cache 최소 임계값 ~2,048 tokens — 4.5 의 1,024 보다 2배. 미달 시 `cachePoint` silently rejected (error 없이 `Cache R/W: 0/0`). 2026-05-12 실측에서 system_prompt 1,016 → 3,566 tokens 확장으로 해결. 자세한 재현 절차 §「Bedrock prompt cache 재현」.
