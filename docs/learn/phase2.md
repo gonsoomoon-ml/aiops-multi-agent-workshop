@@ -91,8 +91,6 @@ source .env
 - Phase 3: "OAuth provider 경유 시 *같은 결과*" 검증 (AgentCore Identity 사용)
 - → enterprise 패턴 (provider 경유) 도 같은 token 임을 격리하여 학습
 
-**JWT 흐름 디버깅**: `DEBUG=1 uv run python -m agents.monitor.local.run --mode past` — token 획득 + Bearer header 주입 + Gateway 응답 trace 가시화. 자세히는 `[debug_mode.md](debug_mode.md)`.
-
 #### Phase 1 baseline 출력 동일성 (mock 경로)
 
 ```bash
@@ -108,6 +106,24 @@ uv run python -m agents.monitor.local.run --mode live
 ```
 
 Phase 0 의 2 alarm (real `payment-${DEMO_USER}-status-check` + noise `payment-${DEMO_USER}-noisy-cpu`) 분류 — `Tags.Classification` 라벨 그대로. `system_prompt_live.md` 의 예시 출력과 유사한 형식.
+
+#### Debug 모드 (선택) — JWT 흐름 가시화
+
+Phase 2 의 `local/run.py` 는 host process 로 실행되므로 `DEBUG=1` env prefix 만으로 즉시 trace 활성 (재배포 불요 — Phase 3 Runtime 과 다른 점):
+
+```bash
+DEBUG=1 uv run python -m agents.monitor.local.run --mode past
+```
+
+확인 가능 trace:
+
+- `Monitor → Cognito` (Path A) 또는 `Monitor → AgentCore Identity` (Path B) — auth dispatch
+- `Cognito → Monitor` (JWT 발급) + Bearer header 주입
+- `Monitor → Gateway` (MCP list_tools / call_tool)
+- `Lambda → Monitor` (tool result)
+- `Bedrock → Monitor` (usage + cache R/W)
+
+자세한 trace 의미 / 색·박스 의미: `[debug_mode.md](debug_mode.md)`.
 
 #### 통과 기준
 
