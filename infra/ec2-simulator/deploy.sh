@@ -78,10 +78,13 @@ aws cloudformation deploy \
     --tags Project=aiops-demo "User=$DEMO_USER"
 
 # ── .env 갱신 ────────────────────────────────────
+# DEMO_USER 도 함께 write-back — interactive shell 이 `source .env` 시 deploy 와 동기.
+# (write-back 누락 시 후속 `aws describe-*` 명령에서 mismatch — 예: KeyPair NotFound)
 if [[ -f "$PROJECT_ROOT/.env" ]]; then
+    sed -i "s|^DEMO_USER=.*|DEMO_USER=$DEMO_USER|" "$PROJECT_ROOT/.env"
     sed -i "s|^EC2_INSTANCE_ID=.*|EC2_INSTANCE_ID=$INSTANCE_ID|" "$PROJECT_ROOT/.env"
     sed -i "s|^EC2_PUBLIC_IP=.*|EC2_PUBLIC_IP=$PUBLIC_IP|" "$PROJECT_ROOT/.env"
-    log ".env 갱신: EC2_INSTANCE_ID, EC2_PUBLIC_IP"
+    log ".env 갱신: DEMO_USER, EC2_INSTANCE_ID, EC2_PUBLIC_IP"
 fi
 
 echo ""

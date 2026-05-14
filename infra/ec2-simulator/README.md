@@ -3,20 +3,24 @@
 Phase 0은 AIOps 데모의 **라이브 alarm 발화원**을 한 대의 EC2 시뮬레이터로 만든다. 동료의 EC mall이 합류하기 전(Phase 6) 까지 데모는 이 EC2 한 대만으로 incident 시나리오를 재현한다. **노이즈 1종 + 실알람 1종** 의 minimum 구성이다.
 
 목적
+
 - Phase 1의 Monitor Agent가 학습하는 분류 패턴(real vs noise) 의 **라이브 데이터 출처**
 - Phase 2 이후 Gateway·Runtime 통합 시 **CloudWatch native API** 로 호출되는 실제 alarm
 
 ## 1. 구성
 
-| 자원 | 종류 | 비고 |
-| --- | --- | --- |
-| EC2 인스턴스 | t3.micro (Amazon Linux 2023) | EIP 부착, KeyPair 자동 생성, user_data로 Flask `/health` 부팅 |
-| Security Group | 22 + 8080 ingress | 운영자 IP `/32` 만 허용 (자동 감지) |
-| KeyPair | `aiops-demo-${DEMO_USER}-keypair` | CFN이 SSM `/ec2/keypair/<id>` 에 PEM 저장 |
-| 알람 1 — `payment-${DEMO_USER}-status-check` | **real** | `AWS/EC2 StatusCheckFailed > 0` for 1× 60s (워크샵 속도 — production 은 보통 2+). chaos 트리거 대상 |
-| 알람 2 — `payment-${DEMO_USER}-noisy-cpu` | **noise** | `AWS/EC2 CPUUtilization > 0.5%` — 정상 운영 중에도 자주 fire (분류 학습용) |
+
+| 자원                                         | 종류                                | 비고                                                                                     |
+| ------------------------------------------ | --------------------------------- | -------------------------------------------------------------------------------------- |
+| EC2 인스턴스                                   | t3.micro (Amazon Linux 2023)      | EIP 부착, KeyPair 자동 생성, user_data로 Flask `/health` 부팅                                   |
+| Security Group                             | 22 + 8080 ingress                 | 운영자 IP `/32` 만 허용 (자동 감지)                                                              |
+| KeyPair                                    | `aiops-demo-${DEMO_USER}-keypair` | CFN이 SSM `/ec2/keypair/<id>` 에 PEM 저장                                                  |
+| 알람 1 — `payment-${DEMO_USER}-status-check` | **real**                          | `AWS/EC2 StatusCheckFailed > 0` for 1× 60s (워크샵 속도 — production 은 보통 2+). chaos 트리거 대상 |
+| 알람 2 — `payment-${DEMO_USER}-noisy-cpu`    | **noise**                         | `AWS/EC2 CPUUtilization > 0.5%` — 정상 운영 중에도 자주 fire (분류 학습용)                           |
+
 
 CloudFormation 스택 2개 (시연자 충돌 방지를 위해 `${DEMO_USER}` 포함):
+
 - `aiops-demo-${DEMO_USER}-ec2-simulator` — `ec2-simulator.yaml`
 - `aiops-demo-${DEMO_USER}-alarms` — `alarms.yaml`
 
@@ -29,15 +33,18 @@ CloudFormation 스택 2개 (시연자 충돌 방지를 위해 `${DEMO_USER}` 포
 ## 2. 배포
 
 **사전 조건**
-- [ ] `bash bootstrap.sh` 1회 실행 완료 (`.env` 생성 + uv sync + DEMO_USER/STORAGE_BACKEND 결정) — Phase 0 자체는 storage backend 무관, GitHub PAT 도 불필요
-- [ ] AWS 자격증명 (`aws sts get-caller-identity` 통과)
+
+- `bash bootstrap.sh` 1회 실행 완료 (`.env` 생성 + uv sync + DEMO_USER/STORAGE_BACKEND 결정) — Phase 0 자체는 storage backend 무관, GitHub PAT 도 불필요
+- AWS 자격증명 (`aws sts get-caller-identity` 통과)
 
 **명령**
+
 ```bash
 bash infra/ec2-simulator/deploy.sh
 ```
 
 배포 흐름 (deploy.sh 내부):
+
 1. AWS 자격증명 사전 검증 (fail-fast)
 2. `.env` 미존재 시 `.env.example` 자동 복사
 3. 운영자 IP 자동 감지 (`https://checkip.amazonaws.com`) — 실패 시 `ALLOWED_SSH_IP` env로 직접 지정 가능
@@ -49,6 +56,7 @@ bash infra/ec2-simulator/deploy.sh
 배포 직후 Flask 부팅에 **약 2~3분** 소요 (user_data 안에서 `pip install flask` + systemd 등록).
 
 부팅 디버깅:
+
 ```bash
 aws ec2 get-console-output --instance-id "$EC2_INSTANCE_ID" --region "$AWS_REGION" --output text | tail -40
 ```
@@ -125,11 +133,11 @@ aws cloudwatch describe-alarms \
 
 ### 3-5. 통과 기준
 
-- [ ] EC2 + 2종 alarm 배포 성공
-- [ ] Flask `/health` 응답 정상
-- [ ] `stop_instance.sh` 실행 후 ~1분 내 `payment-${DEMO_USER}-status-check` ALARM 진입
-- [ ] `start_instance.sh` 실행 후 OK 복원
-- [ ] `teardown.sh` 실행 후 모든 리소스 삭제 (CloudFormation 콘솔 확인)
+- EC2 + 2종 alarm 배포 성공
+- Flask `/health` 응답 정상
+- `stop_instance.sh` 실행 후 ~1분 내 `payment-${DEMO_USER}-status-check` ALARM 진입
+- `start_instance.sh` 실행 후 OK 복원
+- `teardown.sh` 실행 후 모든 리소스 삭제 (CloudFormation 콘솔 확인)
 
 통과 시 → **Phase 1 (Monitor Agent 로컬, Strands + 3가지 진단 유형, Track B mock 검증)** 진행. Phase 1 통과 후 Phase 2 (Gateway + MCP) 로 이어짐.
 
@@ -140,6 +148,7 @@ bash infra/ec2-simulator/teardown.sh
 ```
 
 수행:
+
 1. `aiops-demo-${DEMO_USER}-alarms` 스택 삭제 (alarm 2개)
 2. `aiops-demo-${DEMO_USER}-ec2-simulator` 스택 삭제 (EC2 + EIP + SG + KeyPair)
 3. `.env` 의 `EC2_INSTANCE_ID`, `EC2_PUBLIC_IP` 비움
