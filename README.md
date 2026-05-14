@@ -1,7 +1,15 @@
-# AIOps Multi-Agent Workshop
+# AIOps Multi-Agent Workshop — A2A across team-owned agents
 
 - **AI Multi-agent 가 시스템 운영 자동화에 어떻게 적용되는지** Strands Agent + Amazon Bedrock AgentCore + A2A 프로토콜로 학습.
 - Flow: CloudWatch alarm 발생 → 운영자 query (`"현재 상황 진단해줘"`) → Supervisor (LLM orchestrator) → Monitor (CloudWatch alarm 조회 + real/noise 판정 — `status-check` real, `noisy-cpu` noise) + Incident (runbook 진단) sub-agent (A2A) → 통합 진단 JSON.
+
+> **왜 A2A 인가 — Team-owned multi-agent**
+>
+> **단순한 대안**: 하나의 supervisor agent 가 sub-agent 를 `@tool` 로 노출하는 **in-process** 패턴 — latency 와 구현 속도에서 유리. Phase 4 (2 독립 Runtime + 수동 dispatch) 다음 단계로 *충분*.
+>
+> **본 워크샵이 A2A 를 채택한 이유**: enterprise 환경 = **각 agent 가 별도 팀 소유** (예: Monitor 팀이 Monitor agent owner, Incident 팀이 Incident agent owner). 같은 process 에 묶을 수 없음 → A2A 프로토콜 (HTTP + JWT + AgentCard) 로 cross-team agent 호출.
+>
+> 본 워크샵의 **Supervisor + 2 A2A sub-agent** 구조 = enterprise multi-agent 아키텍처의 **최소 시뮬레이션**.
 
 ---
 
@@ -168,6 +176,8 @@ bash bootstrap.sh
 
 `uv sync` + AWS 자격증명 사전 검증 + `.env` (AWS_REGION / DEMO_USER / STORAGE_BACKEND 결정 — **default `s3`, PAT 불필요**) + (`STORAGE_BACKEND=github` 선택 시에만 추가) GitHub PAT → SSM SecureString 5단계 검증.
 
+> `.env` 의 전체 lifecycle (파일 2종 / phase 별 추가 entry / Phase 5 cross-load / teardown cleanup / security) — [`docs/learn/env_config.md`](docs/learn/env_config.md).
+
 ### 2. Phase 별 학습 + deploy
 
 각 phase 의 narrative 는 `docs/learn/phase{N}.md`. **순서대로** 읽고 해당 phase 의 deploy 명령 실행. 각 narrative 에 "무엇 (what it is)" + "어떻게 동작 (how it works)" + 검증 (P{N}-A1~A5 = phase 별 acceptance check 5종) 포함.
@@ -175,16 +185,18 @@ bash bootstrap.sh
 
 | Phase | 이름                                        | 핵심 산출물                                                                                                | Narrative                                      | 예상 소요 | 상태  |
 | ----- | ----------------------------------------- | ----------------------------------------------------------------------------------------------------- | ---------------------------------------------- | ----- | --- |
-| **0** | 기반 인프라                                    | EC2 시뮬레이터 + CloudWatch alarm 2종 (real + noise) + 카오스 스크립트                                             | `[docs/learn/phase0.md](docs/learn/phase0.md)` | 30 분  | ✅   |
-| **1** | Strands Agent (local, mock)               | 로컬 Monitor Agent (Strands) + 3가지 진단 유형 (Rule 폐기 / Threshold 상향 / Time window 제외)                      | `[docs/learn/phase1.md](docs/learn/phase1.md)` | 40 분  | ✅   |
-| **2** | AgentCore Gateway + MCP + Debug mode      | AgentCore Gateway + MCP 도구 외부화 (CloudWatch + history mock Lambda) + FlowHook 기반 Debug trace (DEBUG=1) | `[docs/learn/phase2.md](docs/learn/phase2.md)` | 60 분  | ✅   |
-| **3** | AgentCore Runtime — Monitor               | Monitor Agent → AgentCore Runtime 승격                                                                  | `[docs/learn/phase3.md](docs/learn/phase3.md)` | 60 분  | ✅   |
-| **4** | AgentCore Runtime — Incident + Storage    | Incident Runtime + storage Lambda (`STORAGE_BACKEND=s3` default / `github` 선택)       | `[docs/learn/phase4.md](docs/learn/phase4.md)` | 60 분  | ✅   |
-| **5** | AgentCore A2A — Supervisor + 2 sub-agents | Supervisor + Monitor A2A + Incident A2A — A2A 활성화 (`serve_a2a` + LazyExecutor)                        | `[docs/learn/phase5.md](docs/learn/phase5.md)` | 90 분  | ✅   |
+| **0** | 기반 인프라                                    | EC2 시뮬레이터 + CloudWatch alarm 2종 (real + noise) + 카오스 스크립트                                             | [`docs/learn/phase0.md`](docs/learn/phase0.md) | 30 분  | ✅   |
+| **1** | Strands Agent (local, mock)               | 로컬 Monitor Agent (Strands) + 3가지 진단 유형 (Rule 폐기 / Threshold 상향 / Time window 제외)                      | [`docs/learn/phase1.md`](docs/learn/phase1.md) | 40 분  | ✅   |
+| **2** | AgentCore Gateway + MCP + Debug mode      | AgentCore Gateway + MCP 도구 외부화 (CloudWatch + history mock Lambda) + FlowHook 기반 Debug trace (DEBUG=1) | [`docs/learn/phase2.md`](docs/learn/phase2.md) | 60 분  | ✅   |
+| **3** | AgentCore Runtime — Monitor               | Monitor Agent → AgentCore Runtime 승격                                                                  | [`docs/learn/phase3.md`](docs/learn/phase3.md) | 60 분  | ✅   |
+| **4** | AgentCore Runtime — Incident + Storage    | Incident Runtime + storage Lambda (`STORAGE_BACKEND=s3` default / `github` 선택)       | [`docs/learn/phase4.md`](docs/learn/phase4.md) | 60 분  | ✅   |
+| **5** | AgentCore A2A — Supervisor + 2 sub-agents | Supervisor + Monitor A2A + Incident A2A — A2A 활성화 (`serve_a2a` + LazyExecutor)                        | [`docs/learn/phase5.md`](docs/learn/phase5.md) | 90 분  | ✅   |
 | **6** | EC Mall 통합                                | EC mall 통합 — alarm 추가만으로 동일 시나리오 재현 (외부 의존)                                                           | —                                              | —     | 🚧  |
 
 
 > ✅ = narrative 작성 완료 / 🚧 = 작성 대기 — 미완성 시 `docs/design/phase{N}.md` (의사결정 로그) + 코드 직접 참조.
+
+> **Phase 5 deploy 주의** — Supervisor 가 sub-agent ARN 을 root `.env` 에서 cross-load. 의존 순서 (`monitor_a2a → incident_a2a → supervisor`) 와 `.env` lifecycle 전체: [`docs/learn/env_config.md`](docs/learn/env_config.md).
 
 **Stretched** (시간 여유 / 후속 자료):
 
@@ -212,12 +224,12 @@ step 별 분해 + idempotent 보장 + 검증 명령은 [docs/learn/teardown.md](
 
 | 자료                                                                                 | 용도                                                                      |
 | ---------------------------------------------------------------------------------- | ----------------------------------------------------------------------- |
-| `[docs/design/plan_summary.md](docs/design/plan_summary.md)`                       | 전체 시스템 목표 + 아키텍처 + 컴포넌트 인벤토리 + 의존·전제                                    |
+| [`docs/design/plan_summary.md`](docs/design/plan_summary.md)                       | 전체 시스템 목표 + 아키텍처 + 컴포넌트 인벤토리 + 의존·전제                                    |
 | `docs/design/phase{2,3,4,6a}.md` (`6a` = Phase 5 의 설계, historical name 보존)         | Phase 별 의사결정 로그 (D1~D10) — 설계 시점 trade-off 기록                           |
-| `[docs/research/a2a_intro.md](docs/research/a2a_intro.md)`                         | A2A 프로토콜 직관적 학습                                                         |
-| `[docs/research/agentcore_new_feature.md](docs/research/agentcore_new_feature.md)` | AgentCore 신규 기능 노트                                                      |
-| `[docs/research/poc/](docs/research/poc/)`                                         | 별도 mini-project — agent_registry / bedrock_mantle_iam / managed_harness |
-| `[CLAUDE.md](CLAUDE.md)`                                                           | 본 프로젝트의 코드 작성 / 리뷰 / 문서화 컨벤션                                            |
+| [`docs/research/a2a_intro.md`](docs/research/a2a_intro.md)                         | A2A 프로토콜 직관적 학습                                                         |
+| [`docs/research/agentcore_new_feature.md`](docs/research/agentcore_new_feature.md) | AgentCore 신규 기능 노트                                                      |
+| [`docs/research/poc/`](docs/research/poc/)                                         | 별도 mini-project — agent_registry / bedrock_mantle_iam / managed_harness |
+| [`CLAUDE.md`](CLAUDE.md)                                                           | 본 프로젝트의 코드 작성 / 리뷰 / 문서화 컨벤션                                            |
 
 
 ### 2. 외부 upstream repo — 차용 패턴
@@ -228,7 +240,7 @@ step 별 분해 + idempotent 보장 + 검증 명령은 [docs/learn/teardown.md](
 | Repo                                                                                                      | 차용 패턴                                                                                                                                              |
 | --------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `amazon-bedrock-agentcore-samples` — **A2A-multi-agent-incident-response**                                | Cognito CFN (UserPool + ResourceServer + Client M2M), `MCPClient(workload_token)` (Phase 3 Runtime), `RemoteA2aAgent` (Phase 5 Supervisor 참조)      |
-| `[ec-customer-support-e2e-agentcore](https://github.com/gonsoomoon-ml/ec-customer-support-e2e-agentcore)` | Phase 2 Gateway + Target boto3 step-by-step (lab-03 / lab-09)                                                                                      |
+| [`ec-customer-support-e2e-agentcore`](https://github.com/gonsoomoon-ml/ec-customer-support-e2e-agentcore) | Phase 2 Gateway + Target boto3 step-by-step (lab-03 / lab-09)                                                                                      |
 | **developer-briefing-agent**                                                                              | local-agent ↔ managed-agentcore split + 단일 `create_agent()` truth source (C1), `prompts/system_prompt.md` externalization, SSM SecureString PAT 패턴 |
 | **sample-deep-insight**                                                                                   | (cherry-pick) per-agent `MODEL_ID` env, OTEL `service.name` → CloudWatch GenAI Observability 자동 통합                                                 |
 

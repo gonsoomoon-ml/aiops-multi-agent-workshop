@@ -631,7 +631,7 @@ hooks=[FlowHook(agent_name="Monitor")] if is_debug() else [],
 
 A2A sub-agent 입장에선 stream 직접 처리 X → FlowHook 의 hook 출력이 `dump_stream_event` 의 message-block 출력을 대신함.
 
-**Phase 5 신규 코드 0** — `monitor_a2a` / `incident_a2a` 가 Phase 4 의 `monitor/shared/` / `incident/shared/` 를 Option G 로 직접 재사용 → 거기 등록된 FlowHook 이 transitive 활성.
+**Phase 5 신규 코드 0** — `monitor_a2a` / `incident_a2a` 가 Phase 4 의 `monitor/shared/` / `incident/shared/` 를 직접 재사용 → 거기 등록된 FlowHook 이 transitive 활성.
 
 ### 6-5. Debug 활성화 명령 (요약)
 

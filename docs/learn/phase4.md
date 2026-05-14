@@ -56,7 +56,7 @@ TOOL_TARGET_PREFIX = f"{os.environ.get('STORAGE_BACKEND', 's3')}-storage___"
 
 Lambda 응답 shape 동일 (`runbook_found`, `path`, `content`) → Agent 코드 무변경.
 
-### Build context (Option A — phase4.md §3-6 확장)
+### Build context (3-디렉토리 확장)
 
 deploy_runtime.py 가 **3개 디렉토리** 를 build context 로 copy:
 
@@ -293,7 +293,7 @@ Incident teardown 후 Phase 3 Monitor + Phase 2 Cognito stack + Phase 2 Gateway 
 | [`agents/incident/runtime/agentcore_runtime.py`](../../agents/incident/runtime/agentcore_runtime.py) | Runtime entrypoint — payload `{alarm_name}` + SSE yield |
 | [`agents/incident/shared/agent.py`](../../agents/incident/shared/agent.py) | Strands Agent 생성 — caching + FlowHook |
 | [`agents/incident/shared/prompts/system_prompt.md`](../../agents/incident/shared/prompts/system_prompt.md) | JSON schema + Severity 기준 + 예시 3건 |
-| [`agents/incident/runtime/deploy_runtime.py`](../../agents/incident/runtime/deploy_runtime.py) | 5단계 배포 (build context Option A 확장) |
+| [`agents/incident/runtime/deploy_runtime.py`](../../agents/incident/runtime/deploy_runtime.py) | 5단계 배포 (build context 3-디렉토리 확장) |
 | [`agents/incident/runtime/teardown.sh`](../../agents/incident/runtime/teardown.sh) | 6 step reverse + negative check |
 | [`infra/s3-lambda/`](../../infra/s3-lambda/) | S3 backend (default) — bucket + Lambda + Gateway Target |
 | [`infra/github-lambda/`](../../infra/github-lambda/) | GitHub backend (alternative — PAT 필요) |

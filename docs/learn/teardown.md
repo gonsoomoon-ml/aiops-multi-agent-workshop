@@ -10,8 +10,8 @@ Phase 2  (Cognito + Gateway + 2 Lambda)  ← 독립 (CloudWatch 는 native)
 Phase 3  (Monitor Runtime)         ← Phase 2 (Cognito JWT, Gateway target) 의존
 Phase 4  (Incident Runtime + GitHub Lambda)  ← Phase 2/3 의존
 Phase 5  (Supervisor + Monitor a2a + Incident a2a)
-         ← Phase 0/2/4 의존 (Option G: Phase 4 shared/ 직접 import,
-            Option X: Phase 2 Client 재사용)
+         ← Phase 0/2/4 의존 (Phase 4 shared/ 직접 import,
+            Phase 2 Client 재사용)
 ```
 
 → Teardown 은 Phase 5 → 4 → 3 → 2 → 0 역순. Supervisor 가 sub-agent 호출자이므로 가장 먼저 제거.
