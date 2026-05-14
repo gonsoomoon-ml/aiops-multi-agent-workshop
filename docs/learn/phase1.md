@@ -1,30 +1,12 @@
 # Phase 1 — 로컬 Monitor Agent (Strands + 3가지 진단 유형)
 
-> 첫 LLM 등장. mock 데이터 (5 alarms × 24 events) 를 Strands Agent + 3가지 진단 유형 prompt 로 분류. **AWS 의존 0** (Bedrock model API 만 호출).
+> Phase 1 은 첫 LLM 이 등장하는 phase — mock 데이터 (5 alarms / 24 events) 를 **Strands Agent** + **3가지 진단 유형** prompt 로 분류. **AWS 자원 (EC2/Gateway/Cognito) 0건** — Bedrock model API 만.
 
 ---
 
-## 무엇을 만드나
+## 1. 왜 필요한가   *(~3 min read)*
 
-```
-                              [Mock data] data/mock/phase1/alarm_history.py
-                              ├─ 5 alarms (real 2 + noise 3)
-                              └─ 24 history events
-                                       │
-                                       ▼
-[로컬 CLI]  ─►  Strands Agent  ─►  3가지 진단 유형 매칭  ─►  3 섹션 plain text 출력
-                  │                  ├─ rule_retirement (90일+ 방치)
-                  │                  ├─ threshold_uplift (auto_resolve > 90%)
-                  │                  └─ time_window_exclude (특정 2시간대 80%+)
-                  ▼
-            BedrockModel (Claude Sonnet 4.6) + system_prompt_past.md
-```
-
-**핵심**: AWS 자원 (EC2/Gateway/Cognito) 0건 — Bedrock model API 만 사용. 청중이 LLM agent 의 결정성 + prompt 영향력을 단독으로 학습.
-
----
-
-## 왜 필요한가
+Phase 1 은 후속 phase 가 변형할 baseline + 청중의 첫 LLM agent 학습 entry. 6가지 educational 가치:
 
 | Educational 가치 | 학습 포인트 |
 |---|---|
@@ -32,68 +14,41 @@
 | **@tool decorator 패턴** | Python 함수 → LLM 도구 — Strands `@tool` decorator 단 1줄 |
 | **Prompt 결정성** | strict output format rule + 정량 진단 조건 → 같은 입력 → 같은 출력 |
 | **3가지 진단 유형 도메인 학습** | rule_retirement / threshold_uplift / time_window_exclude — alarm hygiene 의 핵심 패턴 |
-| **AWS 의존 격리** | mock 만 → Bedrock 외 0 자원 → 빠른 iteration (~5초) |
-| **회귀 baseline** | Phase 2~5 가 변형해도 이 entry 는 동일 출력 — drift 감지 기준점 |
+| **AWS 자원 격리** | mock 만 → Bedrock 외 0 자원 → 빠른 iteration (~5초) |
+| **회귀 baseline** | Phase 2~5 가 변형해도 이 entry 는 동일 출력 — drift 감지 기준점 (재실행 → byte-identical 확인) |
 
-→ **이 phase 는 후속 모든 phase 의 출력 비교 기준점** (P2-A3 = Phase 2 Gateway mode=past 출력이 Phase 1 과 byte-level 동일해야 함).
-
----
-
-## 어떻게 동작
-
-### 핵심 파일
-
-| 파일 | 역할 | 줄수 |
-|---|---|---:|
-| `data/mock/phase1/alarm_history.py` | Mock data — 5 alarms + 24 events + ground truth (`_classification`, `_diagnosis_type`) | 271 |
-| `agents/monitor/shared/agent.py` | Strands Agent factory — `create_agent(tools, system_prompt_filename)` | 43 |
-| `agents/monitor/shared/tools/alarm_history.py` | `@tool` wrappers — mock data 를 LLM 도구로 노출 | 40 |
-| `agents/monitor/shared/prompts/system_prompt_past.md` | Phase 1 system prompt (3섹션 형식 + 진단 유형 정의 + 예시 출력) | 227 |
-| `agents/monitor/local/run_local_import.py` | Phase 1 entry — `create_agent()` + 도구 주입 + stream | 93 |
-
-### 5개 mock 알람 (ground truth)
-
-| 알람 | 분류 | 진단 유형 | 데이터 패턴 |
-|---|---|---|---|
-| `web-server-cpu-high` | real | — | ack 2/2, action 2/2 |
-| `payment-api-5xx-errors` | real | — | ack 2/2, action 2/2 |
-| `legacy-2018-server-cpu` | noise | `rule_retirement` | age 100일, ack 0건, fire 1건 |
-| `web-server-memory-routine` | noise | `threshold_uplift` | auto_resolve 4/4 (100%), 시간대 분산 |
-| `nightly-batch-cpu` | noise | `time_window_exclude` | fire 3건 모두 02시대 (100% > 80%) |
-
-### 진단 유형 우선순위 (mutual exclusive)
-
-```
-rule_retirement (90일+ AND ack 0)
-    └─ NO ─► time_window_exclude (특정 2h 윈도우 ≥ 80%)
-                └─ NO ─► threshold_uplift (auto_resolve > 90% AND ack < 5%)
-                            └─ NO ─► real (진단 없음)
-```
-
-> **Mock data baseline date**: `2026-05-03 12:00 UTC` 로 hardcoded — agent 의 `alarm_age_days` 계산이 이 시점 기준. 워크샵 청중이 다른 날짜 (e.g., 2026-06+) 실행해도 이 baseline 을 사용 (legacy-2018 의 100일+ rule_retirement 매칭이 안정적).
+→ **이 phase 는 후속 모든 phase 의 출력 비교 기준점** (Phase 2 Gateway mode=past 출력이 Phase 1 과 byte-level 동일해야 함).
 
 ---
 
-## 진행 단계
+## 2. 진행 (Hands-on)   *(run ~5 min / 검증 ~5 min)*
 
-### 1. 사전 확인
+### 2-1. 사전 확인
 
-- [ ] `bash bootstrap.sh` 1회 통과 (`uv sync` + AWS 자격증명) — Bedrock model 접근 필요
-- [ ] Bedrock model access 활성화 — Claude Sonnet 4.6 (`global.anthropic.claude-sonnet-4-6`)
-- [ ] Phase 0 deploy 불필요 — Phase 1 은 mock 만 사용 (AWS 자원 무관)
+bootstrap 1회 실행 — `.env` + `uv sync` (AWS 자격증명 + Bedrock 접근 필요):
 
-### 2. Run
+```bash
+bash bootstrap.sh
+```
+
+- Bedrock model access 활성화 — Claude Sonnet 4.6 (`global.anthropic.claude-sonnet-4-6`)
+- Phase 0 deploy 불필요 — Phase 1 은 mock 만 사용 (AWS 자원 무관)
+
+### 2-2. Run
+
+기본 query — 지난 7일 alarm history 분석 요청:
 
 ```bash
 uv run python -m agents.monitor.local.run_local_import
 ```
 
-또는 custom query:
+Custom query 예시 — 단일 알람 deep dive:
+
 ```bash
-uv run python -m agents.monitor.local.run_local_import --query "<your query>"
+uv run python -m agents.monitor.local.run_local_import --query "legacy-2018-server-cpu 알람만 분석해서 noise 여부와 정량 근거 (alarm_age, ack 비율, action 비율) 를 자세히 설명해줘."
 ```
 
-### 3. 기대 출력
+### 2-3. 검증 — 기대 출력
 
 ```
 ============================================================
@@ -136,31 +91,86 @@ Query: 지난 7일 alarm history를 분석해 3가지 진단 유형으로 제안
 ── 3. 실제로 봐야 할 알람 ──
 - web-server-cpu-high
 - payment-api-5xx-errors
-📊 Tokens — Total: ~17,000 | Input: ~15,500 | Output: ~1,200 | Cache Read: 0 | Cache Write: 0
+📊 Tokens — Total: ~16,700 | Input: ~3,500 | Output: ~1,200 | Cache Read: ~6,000 | Cache Write: ~6,000
 ```
 
-### 4. 통과 기준
+#### 통과 기준 (default query 기준)
 
-- [ ] 출력 첫 글자 `─` (U+2500) 으로 시작 — 사전 narration 0
-- [ ] 5개 알람 모두 분류됨 (real 2 + noise 3)
-- [ ] 3가지 noise 알람의 진단 유형 정확 매칭 (legacy → 규칙 폐기, nightly-batch → 시간대 제외, memory-routine → 임계값 상향)
-- [ ] 정량 근거 인용 (모호한 표현 "거의 전부" 금지)
-- [ ] Section 3 에 real 2개만 나열
-- [ ] Token usage ~17k total, 5~15초 응답
+- agent 응답 첫 글자 `─` (U+2500) — 사전 narration 0
+- 5개 알람 모두 분류됨 (real 2 + noise 3)
+- 3가지 noise 알람의 진단 유형 정확 매칭 (legacy → 규칙 폐기, nightly-batch → 시간대 제외, memory-routine → 임계값 상향)
+- 정량 근거 인용 (모호한 표현 "거의 전부" 금지)
+- Section 3 에 real 2개만 나열
+- Token usage ~17k total, 5~15초 응답
 
-### 5. 다음 phase 진입
+### 2-4. 다음 phase 진입
 
-→ `docs/learn/phase2.md` (Gateway + MCP 도구 외부화)
+→ [`phase2.md`](phase2.md) (Gateway + MCP 도구 외부화)
 
 Phase 1 의 entry (`run_local_import.py`) 는 **영구 보존** — 후속 phase 에서 회귀 격리 검증용으로 계속 호출 가능.
 
 ---
 
-## Reference
+## 3. 무엇을 만드나   *(~2 min read)*
+
+```
+                              [Mock data] data/mock/phase1/alarm_history.py
+                              ├─ 5 alarms (real 2 + noise 3)
+                              └─ 24 history events
+                                       │
+                                       ▼
+[로컬 CLI]  ─►  Strands Agent  ─►  3가지 진단 유형 매칭  ─►  3 섹션 plain text 출력
+                  │                  ├─ rule_retirement (90일+ 방치)
+                  │                  ├─ threshold_uplift (auto_resolve > 90%)
+                  │                  └─ time_window_exclude (특정 2시간대 80%+)
+                  ▼
+            BedrockModel (Claude Sonnet 4.6) + system_prompt_past.md
+```
+
+**핵심**: AWS 자원 (EC2/Gateway/Cognito) 0건 — Bedrock model API 만 사용. 청중이 LLM agent 의 결정성 + prompt 영향력을 단독으로 학습.
+
+---
+
+## 4. 어떻게 동작   *(~5 min read)*
+
+### 핵심 파일
+
+| 파일 | 역할 |
+|---|---|
+| `data/mock/phase1/alarm_history.py` | Mock data — 5 alarms + 24 events + ground truth (`_classification`, `_diagnosis_type`) |
+| `agents/monitor/shared/agent.py` | Strands Agent factory — `create_agent(tools, system_prompt_filename)` |
+| `agents/monitor/shared/tools/alarm_history.py` | `@tool` wrappers — mock data 를 LLM 도구로 노출 |
+| `agents/monitor/shared/prompts/system_prompt_past.md` | Phase 1 system prompt (3섹션 형식 + 진단 유형 정의 + 예시 출력) |
+| `agents/monitor/local/run_local_import.py` | Phase 1 entry — `create_agent()` + 도구 주입 + stream |
+
+### 5개 mock 알람 (ground truth)
+
+| 알람 | 분류 | 진단 유형 | 데이터 패턴 |
+|---|---|---|---|
+| `web-server-cpu-high` | real | — | ack 2/2, action 2/2 |
+| `payment-api-5xx-errors` | real | — | ack 2/2, action 2/2 |
+| `legacy-2018-server-cpu` | noise | `rule_retirement` | age 100일, ack 0건, fire 1건 |
+| `web-server-memory-routine` | noise | `threshold_uplift` | auto_resolve 4/4 (100%), 시간대 분산 |
+| `nightly-batch-cpu` | noise | `time_window_exclude` | fire 3건 모두 02시대 (100% > 80%) |
+
+### 진단 유형 우선순위 (mutual exclusive)
+
+```
+rule_retirement (90일+ AND ack 0)
+    └─ NO ─► time_window_exclude (특정 2h 윈도우 ≥ 80%)
+                └─ NO ─► threshold_uplift (auto_resolve > 90% AND ack < 5%)
+                            └─ NO ─► real (진단 없음)
+```
+
+> **Mock data baseline date**: `2026-05-03 12:00 UTC` 로 hardcoded — agent 의 `alarm_age_days` 계산이 이 시점 기준. 워크샵 청중이 다른 날짜 (e.g., 2026-06+) 실행해도 이 baseline 을 사용 (legacy-2018 의 100일+ rule_retirement 매칭이 안정적).
+
+---
+
+## 5. References
 
 | 자료 | 용도 |
 |---|---|
-| [`agents/monitor/shared/agent.py`](../../agents/monitor/shared/agent.py) | Strands Agent factory (40+ 줄) — 학습 entry |
-| [`agents/monitor/shared/prompts/system_prompt_past.md`](../../agents/monitor/shared/prompts/system_prompt_past.md) | System prompt (227 줄) — WHO/WHAT/DOMAIN/HOW/FORMAT/EXAMPLE/REMINDER 흐름 |
+| [`agents/monitor/shared/agent.py`](../../agents/monitor/shared/agent.py) | Strands Agent factory (60+ 줄) — 학습 entry |
+| [`agents/monitor/shared/prompts/system_prompt_past.md`](../../agents/monitor/shared/prompts/system_prompt_past.md) | System prompt (227 줄) — 역할 → 도구 → 진단 유형 → 우선순위/절차 → 응답 형식 → 예시 → 주의 흐름 |
 | [`data/mock/phase1/alarm_history.py`](../../data/mock/phase1/alarm_history.py) | Mock data + ground truth + auto_resolve 패턴 docstring (271 줄) |
 | [`../design/plan_summary.md`](../design/plan_summary.md) §Monitor Agent 3가지 진단 유형 | 3 type 정량 조건 표 |
