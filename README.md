@@ -219,29 +219,16 @@ step 별 분해 + idempotent 보장 + 검증 명령은 [docs/learn/teardown.md](
 
 ## 9. References
 
-### 1. 내부 doc — 프로젝트 설계/의사결정
-
-
-| 자료                                                                                 | 용도                                                                      |
-| ---------------------------------------------------------------------------------- | ----------------------------------------------------------------------- |
-| [`docs/design/plan_summary.md`](docs/design/plan_summary.md)                       | 전체 시스템 목표 + 아키텍처 + 컴포넌트 인벤토리 + 의존·전제                                    |
-| `docs/design/phase{2,3,4,6a}.md` (`6a` = Phase 5 의 설계, historical name 보존)         | Phase 별 의사결정 로그 (D1~D10) — 설계 시점 trade-off 기록                           |
-| [`docs/research/a2a_intro.md`](docs/research/a2a_intro.md)                         | A2A 프로토콜 직관적 학습                                                         |
-| [`docs/research/agentcore_new_feature.md`](docs/research/agentcore_new_feature.md) | AgentCore 신규 기능 노트                                                      |
-| [`docs/research/poc/`](docs/research/poc/)                                         | 별도 mini-project — agent_registry / bedrock_mantle_iam / managed_harness |
-| [`CLAUDE.md`](CLAUDE.md)                                                           | 본 프로젝트의 코드 작성 / 리뷰 / 문서화 컨벤션                                            |
-
-
-### 2. 외부 upstream repo — 차용 패턴
+### 1. 외부 upstream repo — 차용 패턴
 
 본 프로젝트가 직접 차용한 4 upstream repo:
 
 
 | Repo                                                                                                      | 차용 패턴                                                                                                                                              |
 | --------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `amazon-bedrock-agentcore-samples` — **A2A-multi-agent-incident-response**                                | Cognito CFN (UserPool + ResourceServer + Client M2M), `MCPClient(workload_token)` (Phase 3 Runtime), `RemoteA2aAgent` (Phase 5 Supervisor 참조)      |
-| [`ec-customer-support-e2e-agentcore`](https://github.com/gonsoomoon-ml/ec-customer-support-e2e-agentcore) | Phase 2 Gateway + Target boto3 step-by-step (lab-03 / lab-09)                                                                                      |
-| **developer-briefing-agent**                                                                              | local-agent ↔ managed-agentcore split + 단일 `create_agent()` truth source (C1), `prompts/system_prompt.md` externalization, SSM SecureString PAT 패턴 |
-| **sample-deep-insight**                                                                                   | (cherry-pick) per-agent `MODEL_ID` env, OTEL `service.name` → CloudWatch GenAI Observability 자동 통합                                                 |
+| [amazon-bedrock-agentcore-samples](https://github.com/awslabs/amazon-bedrock-agentcore-samples) — A2A-multi-agent-incident-response | Cognito CFN (UserPool + ResourceServer + Client M2M), `MCPClient(workload_token)` (Phase 3 Runtime), `RemoteA2aAgent` (Phase 5 Supervisor 참조)      |
+| [ec-customer-support-e2e-agentcore](https://github.com/gonsoomoon-ml/ec-customer-support-e2e-agentcore)   | Phase 2 Gateway + Target boto3 step-by-step (lab-03 / lab-09)                                                                                      |
+| [developer-briefing-agent](https://github.com/gonsoomoon-ml/developer-briefing-agent)                     | local-agent ↔ managed-agentcore split + 단일 `create_agent()` truth source (C1), `prompts/system_prompt.md` externalization, SSM SecureString PAT 패턴 |
+| [sample-deep-insight](https://github.com/aws-samples/sample-deep-insight)                                 | (cherry-pick) per-agent `MODEL_ID` env, OTEL `service.name` → CloudWatch GenAI Observability 자동 통합                                                 |
 
 
