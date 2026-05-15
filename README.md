@@ -187,7 +187,7 @@ bash bootstrap.sh
 
 | Phase   | 이름                                        | 핵심 산출물                                                                                                | Narrative                                      | 예상 소요 | 상태  |
 | ----- | ----------------------------------------- | ----------------------------------------------------------------------------------------------------- | ---------------------------------------------- | ----- | --- |
-| <nobr>**환경구성**</nobr> | 실습 환경 구축         | Workshop code server + kiro 설정     | [docs/learn/workshop_setup.md](docs/learn/workshop_setup.md)    |  10 분   | ✅  |
+| **<nobr>환경구성</nobr>** | 실습 환경 구축         | Workshop code server + kiro 설정     | [docs/learn/workshop_setup.md](docs/learn/workshop_setup.md)    |  10 분   | ✅  |
 | **0**   | 기반 인프라                                    | EC2 시뮬레이터 + CloudWatch alarm 2종 (real + noise) + 카오스 스크립트                                             | [docs/learn/phase0.md](docs/learn/phase0.md) | 30 분  | ✅   |
 | **1**   | Strands Agent (local, mock)               | 로컬 Monitor Agent (Strands) + 3가지 진단 유형 (Rule 폐기 / Threshold 상향 / Time window 제외)                      | [docs/learn/phase1.md](docs/learn/phase1.md) | 40 분  | ✅   |
 | **2**   | AgentCore Gateway + MCP + Debug mode      | AgentCore Gateway + MCP 도구 외부화 (CloudWatch + history mock Lambda) + FlowHook 기반 Debug trace (DEBUG=1) | [docs/learn/phase2.md](docs/learn/phase2.md) | 60 분  | ✅   |
