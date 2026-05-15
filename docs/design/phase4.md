@@ -23,36 +23,6 @@
 
 ---
 
-## 0-2. 시스템 목표 매핑 (C1 ~ C5)
-
-`docs/design/plan_summary.md` §시스템 목표 매핑:
-
-| # | 능력 | Phase 4 에서의 역할 | 검증 방법 |
-|---|---|---|---|
-| C1 | 같은 코드 local/Runtime | **회귀 없음** — Monitor C1 유지, Incident 도 동일 패턴 적용 | P4-A1 (Phase 3 P3-A1 ~ A6 회귀 없음) |
-| **C2** | Gateway + MCP 도구 외부화 | **★ 확장** — github-storage Target 추가, Incident 도 `from .tools` import 0건 | P4-A2 (Incident 코드 grep), P4-A4 (runbook read) |
-| C3 | A2A 프로토콜로 독립 Runtime 간 호출 | **이월** — Phase 6a Supervisor 도입 시 server + caller 양쪽 동시 활성화 (resource.md §1 정렬). Phase 4 는 sequential CLI invoke 로 multi-agent 동작만 시연 | Phase 6a 에서 검증 |
-| C4 | AgentCore Policy | 무관 (Phase 5) | — |
-| C5 | Workflow vs Supervisor | 무관 (Phase 6b) | — |
-
-→ **Phase 4 의 직접 deliverable = C2 확장 (GitHub Lambda) + multi-agent sequential invoke 시연**. C3 (A2A) 는 Phase 6a 통합 활성화로 이월 — workshop 청중에게 "caller (Supervisor) 가 등장하기 전엔 A2A 가 의미 없는 dead code" 라는 educational 메시지.
-
----
-
-## 0-3. Phase 4 가 **하지 않는** 것 (scope cuts)
-
-자세한 목록은 §7 Out of Scope. 한 줄 요약:
-
-- **A2A 프로토콜 활성화** (server-side `A2AStarletteApplication` + caller-side `RemoteA2aAgent`) — **Phase 6a 로 통합 이월** (resource.md §1 의 "Phase 6a Supervisor 변환 시 핵심 참조" 정렬)
-- **Cognito Client A/B** — Phase 6a (Supervisor + sub-agents 도입 시)
-- **AgentCore Memory** — 보류 유지 (Phase 5 cross-agent context 패턴 본격화 시 재평가)
-- **Change / Supervisor Runtime** — Phase 6a
-- **AgentCore NL Policy** 부착 — Phase 5
-- **Workflow Orchestrator** — Phase 6b (stretch)
-- **EC mall 통합** — Phase 7
-
-→ Phase 4 PR 영향 범위 = `agents/incident/{shared,runtime}/` 신규 + `infra/github-lambda/github_lambda.yaml` 신규 + `data/runbooks/payment-status-check.md` 신규 + Monitor `invoke_runtime.py` 가 sequential pattern 으로 변경 (또는 별 `invoke_sequential.py` 신규).
-
 **Cognito stack / Gateway / Phase 3 IAM Role / Monitor Runtime entrypoint 본문 / Monitor `agentcore_runtime.py` 모두 미터치.**
 
 ---

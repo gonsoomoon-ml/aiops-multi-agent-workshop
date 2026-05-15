@@ -442,6 +442,3 @@ if __name__ == "__main__":
 - `/home/ubuntu/amazon-bedrock-agentcore-samples/02-use-cases/A2A-multi-agent-incident-response/` — Google ADK + Strands + OpenAI 의 3-agent 토폴로지 (Cognito M2M)
 - `/home/ubuntu/amazon-bedrock-agentcore-samples/02-use-cases/A2A-realestate-agentcore-multiagents/` — Strands supervisor + Cognito 변형 — Phase 5 와 가장 유사
 
-### 본 프로젝트 내 관련 design 문서
-- `docs/design/phase6a.md` — A2A 활성화 phase 의 설계
-- `docs/design/resource.md` §1 — 외부 reference 코드베이스 등록부

@@ -41,7 +41,7 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 PROJECT_ROOT = SCRIPT_DIR.parents[2]
 os.chdir(SCRIPT_DIR)
 
-load_dotenv(PROJECT_ROOT / ".env")
+load_dotenv(PROJECT_ROOT / ".env", override=True)
 
 GREEN = "\033[0;32m"
 YELLOW = "\033[1;33m"

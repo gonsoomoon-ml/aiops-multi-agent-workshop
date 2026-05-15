@@ -67,7 +67,7 @@ bash infra/cognito-gateway/deploy.sh
   Gateway URL: https://aiops-demo-${DEMO_USER}-gateway-xxxx.gateway.bedrock-agentcore.us-west-2.amazonaws.com
   Lambda (history_mock):  arn:aws:lambda:us-west-2:...:function:aiops-demo-${DEMO_USER}-history-mock
   Lambda (cloudwatch):    arn:aws:lambda:us-west-2:...:function:aiops-demo-${DEMO_USER}-cloudwatch-wrapper
-  검증: acceptance criteria (docs/design/phase2.md §8)
+  검증: acceptance criteria
 ```
 
 deploy 후 interactive shell 에 동기 — `.env` 에 갱신된 `GATEWAY_URL`/`COGNITO_*`/`LAMBDA_*` 를 현 shell 로 export:
@@ -78,7 +78,7 @@ source .env
 
 ### 2-3. 검증
 
-> `local/run.py` 는 Phase 2 단독 + Phase 3+ 통합 모두 작동. `auth_local.py` 가 `OAUTH_PROVIDER_NAME` env 유무로 dispatch — 자세히는 §4 [Auth dispatch](#auth-dispatch-auth_localpy--phase-2-standalone-과-phase-3-통합).
+> `local/run.py` 는 Phase 2 단독 + Phase 3+ 통합 모두 작동. `auth_local.py` 가 `OAUTH_PROVIDER_NAME` env 유무로 dispatch 
 
 **Phase 2 standalone 시나리오** (Phase 3 deploy 전 검증 가능):
 
@@ -341,6 +341,5 @@ User      Monitor    Cognito    Gateway    Lambda     Bedrock
 | `[agents/monitor/local/run.py](../../agents/monitor/local/run.py)`                                                 | Phase 2 entry — `--mode past` 또는 `--mode live`                                                      |
 | `[agents/monitor/shared/prompts/system_prompt_live.md](../../agents/monitor/shared/prompts/system_prompt_live.md)` | live mode prompt — `Tags.Classification` 신뢰                                                         |
 | `[debug_mode.md](debug_mode.md)`                                                                                   | `DEBUG=1` 활성 시 cross-phase trace (auth / MCP / tool / TTFT / LLM call duration) — Phase 2 검증에 직접 활용 |
-| `[../design/phase2.md](../design/phase2.md)`                                                                       | 의사결정 로그 (D1~D10) — Smithy 폐기, hybrid CFN+boto3, Lambda intent shape                                 |
 
 

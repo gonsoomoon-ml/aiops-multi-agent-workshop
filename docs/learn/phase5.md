@@ -2,7 +2,7 @@
 
 > Phase 5 는 **Supervisor Runtime** 이 *Supervisor orchestrator* 가 되어 **A2A 프로토콜** 로 2 sub-agent (`monitor_a2a` + `incident_a2a`) 를 호출. routing 정책은 hardcoded 가 아니라 system_prompt 와 sub-agent `@tool` 시그니처 → LLM 이 어떤 sub-agent 를 언제 호출할지 결정.
 
-A2A 프로토콜 기본을 참고하세요: [`docs/research/a2a_intro.md`](../research/a2a_intro.md).
+A2A 프로토콜 기본을 참고하세요: [`a2a_intro.md`](a2a_intro.md).
 
 ---
 
@@ -142,7 +142,7 @@ Cache R/W 가 `0/0` → `<x>/0` (warm) 로 변동 — Supervisor 의 system_prom
 
 > sub-agent 의 cache 는 LazyExecutor 의 `self._built` 게이트 덕에 두 번째 invocation 부터 hit (placeholder 가 real agent 로 한번만 build).
 
-> **latency 효과의 함정** — Bedrock cache 가 cost 는 ~90% 절감하지만 *latency 효과는 size + wrapper 의존*. agentic workload (Strands wrapper, 본 Phase 5 처럼) 에선 -5% 수준. 직접 측정 + 3-layer 모델: [`phase5_prompt_cache_effect.md`](phase5_prompt_cache_effect.md).
+> **latency 효과의 함정** — Bedrock cache 가 cost 는 ~90% 절감하지만 *latency 효과는 size + wrapper 의존*. agentic workload (Strands wrapper, 본 Phase 5 처럼) 에선 -5% 수준.
 
 #### DEBUG 모드 — host (operator timeline) + container (per-LLM-call) 양면
 
@@ -241,9 +241,7 @@ aws logs tail "/aws/bedrock-agentcore/runtimes/${INCIDENT_A2A_RUNTIME_ID}-DEFAUL
 
 > A2A protocol 의 stream loop 는 `StrandsA2AExecutor` 내부 (우리가 소유 X) → sub-agent 의 `dump_stream_event` 호출 부재. FlowHook 의 BeforeModel + AfterModel + BeforeToolCall 만으로 가시화 (Phase 4 대비 message complete trace 한 단계 적음).
 
-##### 양면 timeline worked example
-
-운영자 입장에선 host (4 timing) 가 enough; deep debugging (어느 sub-agent 가 느린지, 어느 LLM call 이 cache miss 했는지) 시 container 도 enable. 실측한 34.6초 invoke 의 host stdout + Supervisor container per-LLM-call breakdown 표 + 핵심 통찰 (Bedrock LLM 본체 3.1s vs sub-agent A2A 24s) — [`phase5_detail.md §1`](phase5_detail.md#1-양면-timeline-worked-example-debug-observability).
+운영자 입장에선 host (4 timing) 가 enough; deep debugging (어느 sub-agent 가 느린지, 어느 LLM call 이 cache miss 했는지) 시 container 도 enable.
 
 자세한 trace 의미: [`debug_mode.md`](debug_mode.md).
 
@@ -295,8 +293,6 @@ uv run agents/supervisor/runtime/invoke_runtime.py --query "현재 상황 진단
 ```
 
 2026-05-12 실측: **44.6s (cold) → 28.4s (warm)**, **-36%** — microVM cold-start + LazyExecutor 첫 build 절감이 핵심. Bedrock LLM 호출 자체는 변동 없음.
-
-자세한 — host CLI / container `_call_subagent` 핵심 코드, 측정 분해 (Supervisor + monitor_a2a + incident_a2a 각 ~5s 절감 출처), caveat 4종 (Bedrock prompt cache 와 독립 / idle 만료 / 길이 제약 / 동시성 위험): [`phase5_detail.md §2`](phase5_detail.md#2-session-id-전파--내부-구조--실측--caveat).
 
 ### 2-5. 정리 / Teardown
 
@@ -403,7 +399,7 @@ Supervisor Runtime (HTTP, port 8080)
     └─ yield workflow_complete
 ```
 
-자세한 protocol 흐름: [`docs/research/a2a_intro.md`](../research/a2a_intro.md) §6 (Supervisor 시나리오 다이어그램).
+자세한 protocol 흐름: [`a2a_intro.md`](a2a_intro.md) §6 (Supervisor 시나리오 다이어그램).
 
 ### `serve_a2a + LazyExecutor` (AWS canonical pattern) — sub-agent 측
 
@@ -438,7 +434,7 @@ if __name__ == "__main__":
     serve_a2a(LazyMonitorExecutor(), port=9000)
 ```
 
-`_build_lock` 가 첫 request 동시 도착 race 보호 — 두 번째 이후 path 는 lock 없이 (`self._built` flag 체크만). 자세한 발견 과정 + AWS docs reference: [`docs/research/a2a_intro.md`](../research/a2a_intro.md) §10.
+`_build_lock` 가 첫 request 동시 도착 race 보호 — 두 번째 이후 path 는 lock 없이 (`self._built` flag 체크만). 자세한 발견 과정 + AWS docs reference: [`a2a_intro.md`](a2a_intro.md) §10.
 
 ### Supervisor 가 sub-agent 를 `@tool` 로 노출 — caller 측
 
@@ -477,7 +473,7 @@ agent = create_supervisor_agent(
 
 ### Phase 2 Client M2M 토큰의 sub-agent 통과 — auth detail
 
-AgentCore `customJWTAuthorizer.allowedClients` 는 **`aud` (= client_id) 만 검증, `scope` 미검증**. 따라서 Phase 2 의 Gateway scope 토큰 (`aiops-demo-${user}-resource-server/invoke`) 이 sub-agent A2A inbound 에도 통과. Phase 5 가 새 Cognito client 추가 0 → 약 **-325 LoC 단순화** ([`../design/phase6a.md`](../design/phase6a.md) 의 alternative path 대비 — Cognito Client A/B + ResourceServer + OperatorUser + 2 OAuth provider variant 추가 제거).
+AgentCore `customJWTAuthorizer.allowedClients` 는 **`aud` (= client_id) 만 검증, `scope` 미검증**. 따라서 Phase 2 의 Gateway scope 토큰 (`aiops-demo-${user}-resource-server/invoke`) 이 sub-agent A2A inbound 에도 통과. Phase 5 가 새 Cognito client 추가 0 → 약 **-325 LoC 단순화** (대안 경로: Cognito Client A/B + ResourceServer + OperatorUser + 2 OAuth provider variant 추가 — 모두 회피).
 
 ### Phase 4 shared/ 직접 재사용 — build-time detail
 
@@ -521,11 +517,8 @@ preservation rule (workshop side-by-side 비교) 정합 — Phase 4 코드는 re
 | **learn doc (Phase 5 family)** | |
 | [`debug_mode.md`](debug_mode.md) | DEBUG=1 시 3 Runtime 모두 FlowHook trace |
 | [`env_config.md`](env_config.md) | `.env` lifecycle — phase 별 추가 entry + Phase 5 cross-load 흐름 |
-| [`phase5_detail.md`](phase5_detail.md) | 양면 timeline worked example + Session-Id 전파 내부 구조·실측·caveat |
-| [`phase5_prompt_cache_effect.md`](phase5_prompt_cache_effect.md) | Bedrock prompt cache latency 효과 — 3-layer 모델 (size + wrapper + write cost) + 직접 측정값 (-38% direct API vs -4.4% Strands wrapper) |
 | **cross-phase / external** | |
 | [`phase4.md`](phase4.md) | Phase 4 Incident narrative — `monitor/shared` + `incident/shared` 코드 source (Phase 5 가 build context 로 직접 재사용) |
-| [`../design/phase6a.md`](../design/phase6a.md) | 의사결정 로그 (D1~D6 + 이월 결정 + Option X / G / Change 단순화 출처) |
-| [`../research/a2a_intro.md`](../research/a2a_intro.md) | A2A 프로토콜 직관 + serve_a2a canonical pattern (§10) + Supervisor 시나리오 다이어그램 (§6) |
+| [`a2a_intro.md`](a2a_intro.md) | A2A 프로토콜 직관 + serve_a2a canonical pattern (§10) + Supervisor 시나리오 다이어그램 (§6) |
 
 ---

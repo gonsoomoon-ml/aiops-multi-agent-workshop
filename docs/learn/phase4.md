@@ -39,7 +39,7 @@ S3 backend (default):
 bash infra/s3-lambda/deploy.sh
 ```
 
-[주의: 실행 안함] 또는 GitHub backend (PAT + SSM 필요): <-- [bootstrap.sh](http://bootstrap.sh) 에서 S3 대신에 Github 선택시
+[주의: 실행 안함] 또는 GitHub backend (PAT + SSM 필요): <-- bootstrap.sh 에서 S3 대신에 Github 선택시
 
 ```bash
 bash infra/github-lambda/deploy.sh
@@ -256,15 +256,15 @@ Phase 3 와 동일 entity 흐름 (invoke → SIGV4 → container → OAuth → G
 
 | 자료                                                                                                         | 용도                                                      |
 | ---------------------------------------------------------------------------------------------------------- | ------------------------------------------------------- |
-| [`agents/incident/runtime/agentcore_runtime.py`](../../agents/incident/runtime/agentcore_runtime.py)       | Runtime entrypoint — payload `{alarm_name}` + SSE yield |
-| [`agents/incident/shared/agent.py`](../../agents/incident/shared/agent.py)                                 | Strands Agent 생성 — caching + FlowHook                   |
-| [`agents/incident/shared/prompts/system_prompt.md`](../../agents/incident/shared/prompts/system_prompt.md) | JSON schema + Severity 기준 + 예시 3건                       |
-| [`agents/incident/runtime/deploy_runtime.py`](../../agents/incident/runtime/deploy_runtime.py)             | 5단계 배포 (build context 3-디렉토리 확장)                        |
-| [`agents/incident/runtime/teardown.sh`](../../agents/incident/runtime/teardown.sh)                         | 6 step reverse + negative check                         |
-| [`infra/s3-lambda/`](../../infra/s3-lambda/)                                                               | S3 backend (default) — bucket + Lambda + Gateway Target |
-| [`infra/github-lambda/`](../../infra/github-lambda/)                                                       | GitHub backend (alternative — PAT 필요)                   |
-| [`debug_mode.md`](debug_mode.md)                                                                           | DEBUG=1 시 FlowHook / TTFT / cache 통계                    |
-| [`phase3.md`](phase3.md)                                                                                   | Phase 3 Monitor — 같은 OAuth provider + Runtime 패턴        |
-| [`../design/phase4.md`](../design/phase4.md)                                                               | 의사결정 로그 (D1~D6)                                         |
+| `[agents/incident/runtime/agentcore_runtime.py](../../agents/incident/runtime/agentcore_runtime.py)`       | Runtime entrypoint — payload `{alarm_name}` + SSE yield |
+| `[agents/incident/shared/agent.py](../../agents/incident/shared/agent.py)`                                 | Strands Agent 생성 — caching + FlowHook                   |
+| `[agents/incident/shared/prompts/system_prompt.md](../../agents/incident/shared/prompts/system_prompt.md)` | JSON schema + Severity 기준 + 예시 3건                       |
+| `[agents/incident/runtime/deploy_runtime.py](../../agents/incident/runtime/deploy_runtime.py)`             | 5단계 배포 (build context 3-디렉토리 확장)                        |
+| `[agents/incident/runtime/teardown.sh](../../agents/incident/runtime/teardown.sh)`                         | 6 step reverse + negative check                         |
+| `[infra/s3-lambda/](../../infra/s3-lambda/)`                                                               | S3 backend (default) — bucket + Lambda + Gateway Target |
+| `[infra/github-lambda/](../../infra/github-lambda/)`                                                       | GitHub backend (alternative — PAT 필요)                   |
+| `[debug_mode.md](debug_mode.md)`                                                                           | DEBUG=1 시 FlowHook / TTFT / cache 통계                    |
+| `[phase3.md](phase3.md)`                                                                                   | Phase 3 Monitor — 같은 OAuth provider + Runtime 패턴        |
+
 
 

@@ -197,7 +197,7 @@ bash bootstrap.sh
 | **6**   | EC Mall 통합                                | EC mall 통합 — alarm 추가만으로 동일 시나리오 재현 (외부 의존)                                                           | —                                              | —     | 🚧  |
 
 
-> ✅ = narrative 작성 완료 / 🚧 = 작성 대기 — 미완성 시 `docs/design/phase{N}.md` (의사결정 로그) + 코드 직접 참조.
+> ✅ = narrative 작성 완료 / 🚧 = 작성 대기 — 미완성 시 코드 직접 참조.
 
 > **Phase 5 deploy 주의** — Supervisor 가 sub-agent ARN 을 root `.env` 에서 cross-load. 의존 순서 (`monitor_a2a → incident_a2a → supervisor`) 와 `.env` lifecycle 전체: `[docs/learn/env_config.md](docs/learn/env_config.md)`.
 

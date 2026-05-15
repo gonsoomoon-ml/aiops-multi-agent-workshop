@@ -234,6 +234,5 @@ CloudWatch alarm 두 종류 (real + noise) 가 fire 할 수 있는 최소 환경
 | `infra/ec2-simulator/{ec2-simulator,alarms}.yaml`                          | CFN 템플릿 원본                                                                                                                                   |
 | `infra/ec2-simulator/chaos/`                                               | stop / start 스크립트                                                                                                                            |
 | [`env_config.md`](env_config.md)                                           | `.env` lifecycle — Phase 0 가 채우는 entry (`DEMO_USER` / `EC2_INSTANCE_ID` / `EC2_PUBLIC_IP`) + bootstrap.sh 의 `AWS_REGION` / `STORAGE_BACKEND` |
-| [`../design/_archive/phase0_audit.md`](../design/_archive/phase0_audit.md) | 첫 설계 시 14개 review 결정 (역사 보존)                                                                                                                 |
 
 
