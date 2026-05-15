@@ -78,7 +78,7 @@ source .env
 
 ### 2-3. 검증
 
-> `local/run.py` 는 Phase 2 단독 + Phase 3+ 통합 모두 작동. `auth_local.py` 가 `OAUTH_PROVIDER_NAME` env 유무로 dispatch — 자세히는 §4 [Auth dispatch](#auth-dispatch-auth_localpy--phase-2-standalone-과-phase-3-통합).
+> `local/run.py` 는 Phase 2 단독 + Phase 3+ 통합 모두 작동. `auth_local.py` 가 `OAUTH_PROVIDER_NAME` env 유무로 dispatch 
 
 **Phase 2 standalone 시나리오** (Phase 3 deploy 전 검증 가능):
 

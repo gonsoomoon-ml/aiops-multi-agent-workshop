@@ -40,7 +40,7 @@ from dotenv import load_dotenv
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 PROJECT_ROOT = SCRIPT_DIR.parents[2]
-load_dotenv(PROJECT_ROOT / ".env")
+load_dotenv(PROJECT_ROOT / ".env", override=True)
 
 sys.path.insert(0, str(PROJECT_ROOT))
 from _shared_debug import dprint  # noqa: E402

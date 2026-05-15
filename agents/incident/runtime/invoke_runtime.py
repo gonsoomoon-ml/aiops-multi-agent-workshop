@@ -32,7 +32,7 @@ from dotenv import load_dotenv
 SCRIPT_DIR = Path(__file__).resolve().parent
 PROJECT_ROOT = SCRIPT_DIR.parents[2]
 # 모든 metadata 가 repo root .env (INCIDENT_ prefix) — phase 3/5 와 namespace 분리
-load_dotenv(PROJECT_ROOT / ".env")
+load_dotenv(PROJECT_ROOT / ".env", override=True)
 
 REGION = os.getenv("AWS_REGION", "us-west-2")
 RUNTIME_ARN = os.getenv("INCIDENT_RUNTIME_ARN")

@@ -45,7 +45,7 @@ PROJECT_ROOT = SCRIPT_DIR.parents[2]
 os.chdir(SCRIPT_DIR)
 
 # Phase 2 가 채운 repo root .env 에서 carry-over 값 로드 (Cognito + Gateway)
-load_dotenv(PROJECT_ROOT / ".env")
+load_dotenv(PROJECT_ROOT / ".env", override=True)
 
 # 터미널 색상
 GREEN = "\033[0;32m"
