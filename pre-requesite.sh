@@ -112,6 +112,7 @@ POLICIES=(
     "arn:aws:iam::aws:policy/AmazonEC2FullAccess"
     "arn:aws:iam::aws:policy/CloudWatchFullAccess"
     "arn:aws:iam::aws:policy/AmazonSSMFullAccess"
+    "arn:aws:iam::aws:policy/AmazonBedrockFullAccess"
 )
 
 ATTACHED=$(aws iam list-attached-role-policies --role-name "$ROLE_NAME" --query 'AttachedPolicies[].PolicyArn' --output text)

@@ -185,15 +185,16 @@ bash bootstrap.sh
 각 phase 의 narrative 는 `docs/learn/phase{N}.md`. **순서대로** 읽고 해당 phase 의 deploy 명령 실행. 각 narrative 에 "무엇 (what it is)" + "어떻게 동작 (how it works)" + 검증 (P{N}-A1~A5 = phase 별 acceptance check 5종) 포함.
 
 
-| Phase | 이름                                        | 핵심 산출물                                                                                                | Narrative                                      | 예상 소요 | 상태  |
+| Phase   | 이름                                        | 핵심 산출물                                                                                                | Narrative                                      | 예상 소요 | 상태  |
 | ----- | ----------------------------------------- | ----------------------------------------------------------------------------------------------------- | ---------------------------------------------- | ----- | --- |
-| **0** | 기반 인프라                                    | EC2 시뮬레이터 + CloudWatch alarm 2종 (real + noise) + 카오스 스크립트                                             | `[docs/learn/phase0.md](docs/learn/phase0.md)` | 30 분  | ✅   |
-| **1** | Strands Agent (local, mock)               | 로컬 Monitor Agent (Strands) + 3가지 진단 유형 (Rule 폐기 / Threshold 상향 / Time window 제외)                      | `[docs/learn/phase1.md](docs/learn/phase1.md)` | 40 분  | ✅   |
-| **2** | AgentCore Gateway + MCP + Debug mode      | AgentCore Gateway + MCP 도구 외부화 (CloudWatch + history mock Lambda) + FlowHook 기반 Debug trace (DEBUG=1) | `[docs/learn/phase2.md](docs/learn/phase2.md)` | 60 분  | ✅   |
-| **3** | AgentCore Runtime — Monitor               | Monitor Agent → AgentCore Runtime 승격                                                                  | `[docs/learn/phase3.md](docs/learn/phase3.md)` | 60 분  | ✅   |
-| **4** | AgentCore Runtime — Incident + Storage    | Incident Runtime + storage Lambda (`STORAGE_BACKEND=s3` default / `github` 선택)                        | `[docs/learn/phase4.md](docs/learn/phase4.md)` | 60 분  | ✅   |
-| **5** | AgentCore A2A — Supervisor + 2 sub-agents | Supervisor + Monitor A2A + Incident A2A — A2A 활성화 (`serve_a2a` + LazyExecutor)                        | `[docs/learn/phase5.md](docs/learn/phase5.md)` | 90 분  | ✅   |
-| **6** | EC Mall 통합                                | EC mall 통합 — alarm 추가만으로 동일 시나리오 재현 (외부 의존)                                                           | —                                              | —     | 🚧  |
+| <nobr>**환경구성**</nobr> | 실습 환경 구축         | Workshop code server + kiro 설정     | [docs/learn/workshop_setup.md](docs/learn/workshop_setup.md)    |  10 분   | ✅  |
+| **0**   | 기반 인프라                                    | EC2 시뮬레이터 + CloudWatch alarm 2종 (real + noise) + 카오스 스크립트                                             | [docs/learn/phase0.md](docs/learn/phase0.md) | 30 분  | ✅   |
+| **1**   | Strands Agent (local, mock)               | 로컬 Monitor Agent (Strands) + 3가지 진단 유형 (Rule 폐기 / Threshold 상향 / Time window 제외)                      | [docs/learn/phase1.md](docs/learn/phase1.md) | 40 분  | ✅   |
+| **2**   | AgentCore Gateway + MCP + Debug mode      | AgentCore Gateway + MCP 도구 외부화 (CloudWatch + history mock Lambda) + FlowHook 기반 Debug trace (DEBUG=1) | [docs/learn/phase2.md](docs/learn/phase2.md) | 60 분  | ✅   |
+| **3**   | AgentCore Runtime — Monitor               | Monitor Agent → AgentCore Runtime 승격                                                                  | [docs/learn/phase3.md](docs/learn/phase3.md) | 60 분  | ✅   |
+| **4**   | AgentCore Runtime — Incident + Storage    | Incident Runtime + storage Lambda (`STORAGE_BACKEND=s3` default / `github` 선택)                        | [docs/learn/phase4.md](docs/learn/phase4.md) | 60 분  | ✅   |
+| **5**   | AgentCore A2A — Supervisor + 2 sub-agents | Supervisor + Monitor A2A + Incident A2A — A2A 활성화 (`serve_a2a` + LazyExecutor)                        | [docs/learn/phase5.md](docs/learn/phase5.md) | 90 분  | ✅   |
+| **6**   | EC Mall 통합                                | EC mall 통합 — alarm 추가만으로 동일 시나리오 재현 (외부 의존)                                                           | —                                              | —     | 🚧  |
 
 
 > ✅ = narrative 작성 완료 / 🚧 = 작성 대기 — 미완성 시 코드 직접 참조.
