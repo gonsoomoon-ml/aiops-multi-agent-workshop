@@ -1,262 +1,128 @@
-# Phase 6 — Cross-Account Monitoring
+# Phase 6 — Cross-Account Monitoring (IAM User Access Key)
 
-> Phase 6 는 **다른 AWS 계정의 CloudWatch Alarm** 을 기존 Monitor Agent 가 분석할 수 있도록 **STS AssumeRole 기반 cross-account 접근**을 구성. cloudwatch_wrapper Lambda 가 Target Account 의 IAM Role 을 assume 하여 원격 계정의 alarm 을 읽고 분류.
+> Phase 6 는 **다른 AWS 계정 (Sample App Account) 의 CloudWatch Alarm** 을 기존 Monitor Agent 가 분석할 수 있도록 **IAM User Access Key 기반 cross-account Lambda 호출**을 구성. Workshop Account 의 Lambda 가 전달받은 Access Key 로 Sample App Account 의 Proxy Lambda 를 직접 invoke 하고, Proxy Lambda 가 자기 계정의 CloudWatch 를 읽어 응답.
 
 ---
 
 ## 1. 왜 필요한가   *(~3 min read)*
 
-엔터프라이즈 환경에서 모니터링 대상은 단일 계정에 국한되지 않음. 운영팀은 여러 AWS 계정 (dev / staging / prod / shared-services) 의 alarm 을 **하나의 Agent** 로 통합 분석해야 함.
-
+엔터프라이즈 환경에서 모니터링 대상은 단일 계정에 국한되지 않음. 운영팀은 여러 AWS 계정의 alarm 을 **하나의 Agent** 로 통합 분석해야 함.
 
 | 동기 | Phase 5 까지의 범위 | Phase 6 에서 추가로 다루는 내용 |
 |---|---|---|
-| **Multi-account 가시성** | 단일 계정 내 alarm 조회 | Target Account 의 alarm 을 cross-account AssumeRole 로 통합 조회 |
-| **중앙 집중 운영** | 단일 계정 모니터링 시나리오 | 하나의 Agent (Lambda) 가 N개 계정 alarm 을 통합 분석하는 패턴 |
-| **최소 권한 원칙** | Lambda Role 에 자기 계정 CloudWatch 권한 부여 | Target Account Role 에 필요한 권한만 위임 + trust policy 로 호출자 제한 |
-| **Enterprise IAM 패턴 학습** | 단일 계정 IAM 구성 | STS AssumeRole + trust policy + ExternalId 패턴 실습 |
-
+| **Multi-account 가시성** | 단일 계정 내 alarm 조회 | Sample App Account 의 alarm 을 Proxy Lambda 경유로 통합 조회 |
+| **최소 노출 원칙** | 단일 계정 IAM 구성 | 전용 IAM User 가 단일 Lambda invoke 권한만 보유 |
+| **Enterprise 패턴 학습** | 단일 계정 IAM 구성 | Cross-account credential 전달 + Lambda invoke 패턴 실습 |
 
 ---
 
-## 2. 진행 (Hands-on)   *(설정 ~15 min / 검증 ~5 min)*
+## 2. 모니터링 대상 — Food Order Sample App
 
-### 2-1. 사전 확인
+Phase 6 의 모니터링 대상은 별도 AWS 계정에 배포된 **Food Order 데모 애플리케이션**입니다.
 
-- **Phase 2 완료** (Cognito stack + Gateway alive — `GATEWAY_URL` / `COGNITO_*` in `.env`)
-- **Phase 5 완료** (Supervisor + 2 sub-agent Runtime READY) — 또는 최소 Phase 2 local agent 동작
-- **Target Account** 접근 가능 (AWS CLI profile 또는 별도 자격증명)
-- Target Account 에 CloudWatch Alarm 이 존재 (모니터링 대상)
+**서비스 URL**: [https://demo.my-awsome-app.xyz/](https://demo.my-awsome-app.xyz/)
 
-### 2-2. Target Account 정보 확인
-
-#### Step A — Target Account 접근 정보 확인
-
-모니터링 대상은 **Food Order 데모 애플리케이션**입니다.
-
-**Sample Web App**: [https://demo.my-awsome-app.xyz/](https://demo.my-awsome-app.xyz/)
-
-![Food Order 데모 앱 프론트엔드](../assets/workshop_setup/demo_app.png)
+![Food Order 앱 프론트엔드](../assets/workshop_setup/demo_app.png)
 
 **아키텍처 구성**
 
-![Food Order 데모 앱 아키텍처](../assets/workshop_setup/demo_app_architecture.png)
+![Food Order 앱 아키텍처](../assets/workshop_setup/demo_app_architecture.png)
 
-아래 정보를 환경변수로 설정하세요. `TARGET_ACCOUNT_ID` 는 행사 당일 진행자에게 전달받으세요.
+이 애플리케이션에서 발생하는 CloudWatch Alarm 을 Workshop Account 의 Agent 가 분석합니다. Sample App Account 에는 Proxy Lambda 가 배포되어 있으며, Workshop Account 는 전용 IAM User Access Key 로 이 Lambda 를 invoke 합니다.
 
-| 항목 | 값 | 비고 |
-|---|---|---|
-| `TARGET_ACCOUNT_ID` | 행사 당일 진행자 제공 | 보안상 사전 비공개 |
-| `TARGET_ROLE_NAME` | `foodorder-dev-workshop-readonly` | 미리 생성됨 |
-| `EXTERNAL_ID` | `aiops-workshop-2026` | 미리 생성됨 |
+---
 
-```bash
-# ⚠️ TARGET_ACCOUNT_ID 는 행사 진행자에게 전달받은 실제 값으로 교체하세요
-TARGET_ACCOUNT_ID="<행사 진행자에게 전달받은 Account ID>"
-TARGET_ROLE_NAME="foodorder-dev-workshop-readonly"
-EXTERNAL_ID="aiops-workshop-2026"
-TARGET_ROLE_ARN="arn:aws:iam::${TARGET_ACCOUNT_ID}:role/${TARGET_ROLE_NAME}"
-```
+## 3. 진행 (Hands-on)   *(설정 ~10 min / 검증 ~5 min)*
 
-AssumeRole 동작 확인 (수동 테스트):
+### 3-1. 사전 확인
 
-```bash
-aws sts assume-role \
-  --role-arn "$TARGET_ROLE_ARN" \
-  --role-session-name workshop-participant \
-  --external-id "$EXTERNAL_ID"
-```
+- **Phase 5 완료** (Supervisor + 2 sub-agent Runtime READY)
+- AWS 자격 증명 + `source .env`
+- **행사 진행 AWS 직원에게 아래 정보를 전달받으세요:**
 
-정상 시 `Credentials` (AccessKeyId, SecretAccessKey, SessionToken) 가 반환됩니다. 에러 발생 시 행사 진행자에게 문의하세요.
+| 항목 | 설명 |
+|---|---|
+| `SOURCE_LAMBDA_ARN` | Sample App Proxy Lambda ARN |
+| `SOURCE_ACCESS_KEY_ID` | 전용 IAM User Access Key ID |
+| `SOURCE_SECRET_ACCESS_KEY` | 전용 IAM User Secret Access Key |
+| `SOURCE_REGION` | Proxy Lambda region |
 
-### 2-3. Deploy — Agent Account (Lambda 가 있는 계정)
+> **Sample App Account 설정은 행사 진행자가 사전 완료합니다.** 전용 IAM User 는 해당 Proxy Lambda 의 `lambda:InvokeFunction` 권한만 보유합니다.
 
-#### Step B — Lambda Role 에 AssumeRole 권한 추가
+### 3-2. Deploy
 
-Agent 계정에서 실행 (Step A 에서 설정한 환경변수 유지):
+#### Step A — `.env` 에 Cross-Account 정보 추가
 
-```bash
-DEMO_USER="${DEMO_USER:-ubuntu}"
-
-cat > /tmp/assume-role-policy.json << EOF
-{
-  "Version": "2012-10-17",
-  "Statement": [
-    {
-      "Effect": "Allow",
-      "Action": "sts:AssumeRole",
-      "Resource": "${TARGET_ROLE_ARN}"
-    }
-  ]
-}
-EOF
-
-aws iam put-role-policy \
-  --role-name "aiops-demo-${DEMO_USER}-cloudwatch-wrapper-role" \
-  --policy-name "cross-account-assume" \
-  --policy-document file:///tmp/assume-role-policy.json
-```
-
-#### Step C — Lambda 환경변수에 Target Role ARN 설정
-
-```bash
-aws lambda update-function-configuration \
-  --function-name "aiops-demo-${DEMO_USER}-cloudwatch-wrapper" \
-  --environment "Variables={DEMO_USER=${DEMO_USER},CROSS_ACCOUNT_ROLE_ARN=${TARGET_ROLE_ARN},EXTERNAL_ID=${EXTERNAL_ID}}" \
-  --region "${AWS_REGION:-us-west-2}"
-```
-
-#### Step D — Lambda 코드 업데이트 (AssumeRole 로직 추가)
-
-기존 handler 를 백업한 뒤, cross-account 지원 버전으로 교체합니다:
-
-```bash
-cd /workshop/aiops-multi-agent-workshop/infra/cognito-gateway/lambda/cloudwatch_wrapper
-
-# 기존 파일 백업
-cp handler.py handler.py.bak
-
-# cross-account 버전 생성
-cat > handler.py << 'EOF'
-"""cloudwatch-wrapper Lambda — Cross-account support (Phase 6)."""
-import os
-
-import boto3
-
-DEMO_USER = os.environ["DEMO_USER"]
-ALARM_PREFIX = f"payment-{DEMO_USER}-"
-CROSS_ACCOUNT_ROLE_ARN = os.environ.get("CROSS_ACCOUNT_ROLE_ARN")
-EXTERNAL_ID = os.environ.get("EXTERNAL_ID")
-
-
-def _get_cw_client():
-    """Cross-account role 설정 시 AssumeRole, 미설정 시 로컬 계정."""
-    if CROSS_ACCOUNT_ROLE_ARN:
-        sts = boto3.client("sts")
-        params = {
-            "RoleArn": CROSS_ACCOUNT_ROLE_ARN,
-            "RoleSessionName": "aiops-monitor-cross-account",
-        }
-        if EXTERNAL_ID:
-            params["ExternalId"] = EXTERNAL_ID
-        creds = sts.assume_role(**params)["Credentials"]
-        return boto3.client(
-            "cloudwatch",
-            aws_access_key_id=creds["AccessKeyId"],
-            aws_secret_access_key=creds["SecretAccessKey"],
-            aws_session_token=creds["SessionToken"],
-        )
-    return boto3.client("cloudwatch")
-
-
-cw = _get_cw_client()
-
-
-def _tool_name(context) -> str:
-    cc = getattr(context, "client_context", None)
-    custom = getattr(cc, "custom", None) if cc else None
-    return (custom or {}).get("bedrockAgentCoreToolName", "")
-
-
-def _classification(alarm_arn: str) -> str | None:
-    resp = cw.list_tags_for_resource(ResourceARN=alarm_arn)
-    for tag in resp.get("Tags", []):
-        if tag["Key"] == "Classification":
-            return tag["Value"]
-    return None
-
-
-def _ts(value) -> str | None:
-    return value.isoformat() if value else None
-
-
-def lambda_handler(event, context):
-    tool = _tool_name(context)
-    params = event or {}
-
-    if tool.endswith("list_live_alarms"):
-        resp = cw.describe_alarms(AlarmNamePrefix=ALARM_PREFIX)
-        alarms = []
-        for a in resp.get("MetricAlarms", []):
-            alarms.append({
-                "name": a["AlarmName"],
-                "state": a["StateValue"],
-                "state_reason": a.get("StateReason", ""),
-                "metric_name": a.get("MetricName"),
-                "namespace": a.get("Namespace"),
-                "threshold": a.get("Threshold"),
-                "classification": _classification(a["AlarmArn"]),
-                "updated": _ts(a.get("StateUpdatedTimestamp")),
-            })
-        return {"alarms": alarms}
-
-    if tool.endswith("get_live_alarm_history"):
-        if "alarm_name" not in params:
-            return {"error": "alarm_name is required"}
-        resp = cw.describe_alarm_history(
-            AlarmName=params["alarm_name"],
-            HistoryItemType=params.get("type", "StateUpdate"),
-            MaxRecords=int(params.get("max", 20)),
-        )
-        return {
-            "history": [{
-                "ts": _ts(h["Timestamp"]),
-                "summary": h["HistorySummary"],
-                "type": h["HistoryItemType"],
-            } for h in resp.get("AlarmHistoryItems", [])]
-        }
-
-    return {"error": f"unknown tool: {tool!r}"}
-EOF
-```
-
-> **원복 방법**: `cp handler.py.bak handler.py` 로 즉시 Phase 5 이전 상태로 복원 가능.
-
-Lambda 코드 배포 (CFN re-deploy):
+행사 진행자에게 전달받은 값을 입력합니다:
 
 ```bash
 cd /workshop/aiops-multi-agent-workshop
-bash infra/cognito-gateway/deploy.sh
-```
 
-> **참고**: `deploy.sh` 는 idempotent — Gateway/Target 기존 자원 재사용, Lambda 코드만 업데이트.
-
-#### Step E — `.env` 갱신
-
-```bash
-# .env 에 cross-account 설정 추가
-cat >> .env << EOF
-CROSS_ACCOUNT_ROLE_ARN=${TARGET_ROLE_ARN}
-TARGET_ACCOUNT_ID=${TARGET_ACCOUNT_ID}
+cat >> .env << 'EOF'
+SOURCE_LAMBDA_ARN=<전달받은 Proxy Lambda ARN>
+SOURCE_ACCESS_KEY_ID=<전달받은 Access Key ID>
+SOURCE_SECRET_ACCESS_KEY=<전달받은 Secret Access Key>
+SOURCE_REGION=<전달받은 Region>
 EOF
 source .env
 ```
 
-### 2-4. 검증
+#### 동작 확인 — Lambda invoke 테스트 (선택)
 
-#### Supervisor 를 통한 Target Account alarm 분석
+`.env` 설정 후, 전달받은 credential 로 Proxy Lambda 를 직접 호출해 연결을 확인합니다:
+
+```bash
+cd /workshop/aiops-multi-agent-workshop
+set -a; source .env; set +a
+
+uv run python -c "
+import boto3, json, os
+
+client = boto3.client('lambda',
+    region_name=os.environ['SOURCE_REGION'],
+    aws_access_key_id=os.environ['SOURCE_ACCESS_KEY_ID'],
+    aws_secret_access_key=os.environ['SOURCE_SECRET_ACCESS_KEY'])
+
+resp = client.invoke(
+    FunctionName=os.environ['SOURCE_LAMBDA_ARN'],
+    InvocationType='RequestResponse',
+    Payload=json.dumps({'action': 'list_alarms'}))
+
+print(json.dumps(json.loads(resp['Payload'].read()), indent=2, ensure_ascii=False))
+"
+```
+
+기대: Sample App Account 의 alarm 목록이 JSON 으로 반환.
+
+#### Step B — 배포
+
+```bash
+cd /workshop/aiops-multi-agent-workshop
+bash infra/phase6/deploy.sh
+```
+
+이 스크립트가 자동으로 수행하는 작업:
+1. `cognito.yaml` 에 `SOURCE_*` CFN Parameters + Lambda 환경변수 추가
+2. `deploy.sh` 의 `--parameter-overrides` 에 `SOURCE_*` 전달 추가
+3. `handler.py` 를 cross-account Lambda invoke 버전으로 교체 (원본은 `.bak` 백업)
+4. CFN 재배포
+
+> **IAM Role 변경 불필요** — explicit credential 사용이므로 execution role 무관.
+
+### 3-3. 검증
+
+#### Supervisor 를 통한 Sample App Account alarm 분석
 
 Phase 5 에서 배포한 Supervisor Runtime 에 질문하여 cross-account alarm 을 분석합니다:
 
 ```bash
 set -a; source .env; set +a
-uv run agents/supervisor/runtime/invoke_runtime.py --query "Target Account의 현재 알람 상태를 분석하고 진단해줘"
+uv run agents/supervisor/runtime/invoke_runtime.py --query "현재 알람 상태를 분석하고 진단해줘"
 ```
 
-기대: Supervisor 가 Monitor A2A → cloudwatch_wrapper Lambda → (AssumeRole) → Target Account CloudWatch 경로로 alarm 을 조회하고, Incident A2A 를 통해 진단 결과까지 통합 반환.
+기대: Supervisor 가 Monitor A2A → cloudwatch_wrapper Lambda → (Access Key) → Sample App Proxy Lambda → CloudWatch 경로로 alarm 을 조회하고, Incident A2A 를 통해 진단 결과까지 통합 반환.
 
-```json
-{
-  "summary": "Target Account 알람 분석 결과...",
-  "monitor": "라이브 알람 N개 중 real M개...",
-  "incidents": [...],
-  "next_steps": [...]
-}
-```
-
-#### AssumeRole 성공 확인
-
-Lambda 가 정상적으로 AssumeRole 하는지 CloudWatch Logs 에서 확인:
+#### Lambda 로그 확인
 
 ```bash
 aws logs tail "/aws/lambda/aiops-demo-${DEMO_USER}-cloudwatch-wrapper" \
@@ -265,46 +131,26 @@ aws logs tail "/aws/lambda/aiops-demo-${DEMO_USER}-cloudwatch-wrapper" \
 
 에러 없이 alarm 응답이 반환되면 성공.
 
-#### STS 호출 확인 (CloudTrail)
-
-Target Account 의 CloudTrail 에서 AssumeRole 이벤트 확인:
-
-```bash
-aws cloudtrail lookup-events \
-  --lookup-attributes AttributeKey=EventName,AttributeValue=AssumeRole \
-  --max-results 5 --region "${AWS_REGION:-us-west-2}"
-```
-
 #### 통과 기준
 
-- Lambda 가 Target Account alarm 을 정상 조회
-- Agent 가 cross-account alarm 에 대해 noise/real 분류 수행
-- CloudTrail 에 AssumeRole 이벤트 기록 확인
-- `CROSS_ACCOUNT_ROLE_ARN` 미설정 시 기존 동작 (자기 계정) 유지 (하위 호환)
+- Lambda 가 전달받은 Access Key 로 Sample App Proxy Lambda 를 정상 invoke
+- Agent 가 cross-account alarm 에 대해 분석 수행
+- Supervisor end-to-end 호출 시 정상 JSON 응답 반환
 
-### 2-5. 다음 단계 또는 정리
+### 3-4. 정리
 
-**정리 — Target Account Role 삭제**:
-
-```bash
-# Target Account 에서 실행
-aws iam delete-role-policy --role-name aiops-cross-account-monitoring-role --policy-name cloudwatch-read
-aws iam delete-role --role-name aiops-cross-account-monitoring-role
-```
-
-**정리 — Agent Account 원복**:
+**Workshop Lambda 원복**:
 
 ```bash
-# Lambda 환경변수에서 cross-account 설정 제거
-aws lambda update-function-configuration \
-  --function-name "aiops-demo-${DEMO_USER}-cloudwatch-wrapper" \
-  --environment "Variables={DEMO_USER=${DEMO_USER}}" \
-  --region "${AWS_REGION:-us-west-2}"
+cd /workshop/aiops-multi-agent-workshop/infra/cognito-gateway/lambda/cloudwatch_wrapper
+cp handler.py.bak handler.py
 
-# Lambda Role 에서 cross-account policy 제거
-aws iam delete-role-policy \
-  --role-name "aiops-demo-${DEMO_USER}-cloudwatch-wrapper-role" \
-  --policy-name "cross-account-assume"
+# cognito.yaml + deploy.sh 원복
+cd /workshop/aiops-multi-agent-workshop
+git checkout -- infra/cognito-gateway/cognito.yaml infra/cognito-gateway/deploy.sh
+
+# 재배포
+bash infra/cognito-gateway/deploy.sh
 ```
 
 **완전 정리** (모든 phase 자원 일괄):
@@ -315,159 +161,150 @@ bash teardown_all.sh
 
 ---
 
-## 3. 무엇을 만드나   *(~3 min read)*
+## 4. 무엇을 만드나   *(~3 min read)*
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│                          Agent Account                                       │
+│                       Workshop Account                                       │
 │                                                                             │
 │  ┌──────────────┐       ┌──────────────────┐       ┌─────────────────────┐  │
 │  │ Strands Agent│──MCP─▶│ AgentCore Gateway│──────▶│ cloudwatch_wrapper  │  │
-│  │ (local/      │ Bearer│ (CUSTOM_JWT)     │ IAM   │ Lambda              │  │
-│  │  Runtime)    │  JWT  │                  │invoke │                     │  │
+│  │ (Supervisor  │ Bearer│ (CUSTOM_JWT)     │ IAM   │ Lambda              │  │
+│  │  → Monitor)  │  JWT  │                  │invoke │                     │  │
 │  └──────────────┘       └──────────────────┘       └──────────┬──────────┘  │
 │                                                               │             │
-│                                                    sts:AssumeRole           │
+│                                              boto3 lambda:Invoke            │
+│                                              (explicit Access Key)          │
 │                                                               │             │
 └───────────────────────────────────────────────────────────────┼─────────────┘
                                                                 │
                                                                 ▼
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│                          Target Account                                      │
+│                       Sample App Account                                     │
 │                                                                             │
-│  ┌──────────────────────────────────────────────┐                           │
-│  │ IAM Role: aiops-cross-account-monitoring-role│                           │
-│  │  - Trust: Agent Account Lambda Role          │                           │
-│  │  - Condition: ExternalId match               │                           │
-│  │  - Policy: cloudwatch:Describe*/ListTags*    │                           │
-│  └──────────────────────────────┬───────────────┘                           │
+│  ┌──────────────────────────────────────────────────────────┐               │
+│  │ Proxy Lambda                                             │               │
+│  │  - IAM User: foodorder-dev-workshop-cw-invoker           │               │
+│  │    (lambda:InvokeFunction — 이 Lambda 만)                 │               │
+│  │  - 내부: boto3 cloudwatch read (자기 계정)                  │               │
+│  └──────────────────────────────┬───────────────────────────┘               │
 │                                 │                                           │
 │                                 ▼                                           │
 │  ┌──────────────────────────────────────────────┐                           │
 │  │ CloudWatch Alarms                            │                           │
-│  │  └─ payment-*-status-check, payment-*-cpu... │                           │
+│  │  └─ foodorder-dev-* alarms                   │                           │
 │  └──────────────────────────────────────────────┘                           │
 │                                                                             │
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
 
-**핵심**: 기존 Agent 인프라 (Gateway + Lambda) 는 그대로 — Lambda 내부에 AssumeRole 한 줄 추가로 cross-account 확장. `CROSS_ACCOUNT_ROLE_ARN` 환경변수 유무로 동작 분기 (하위 호환 유지).
+**핵심**: Workshop 계정의 Lambda 가 전달받은 IAM User Access Key 로 boto3 client 를 생성하여 Sample App Proxy Lambda 를 `lambda:Invoke`. Cross-account resource-based policy 없음, role assumption 없음. IAM User 가 자기 계정의 Lambda 를 invoke 할 뿐.
 
 ---
 
-## 4. 어떻게 동작   *(~10 min read)*
+## 5. 어떻게 동작   *(~5 min read)*
 
-### IAM 자원 (2개 계정에 걸침)
-
-
-| 계정 | 자원 | 역할 |
-|---|---|---|
-| **Agent Account** | `cloudwatch-wrapper-role` + inline policy `cross-account-assume` | Lambda 가 Target Role 을 assume 할 수 있는 권한 |
-| **Target Account** | `aiops-cross-account-monitoring-role` + trust policy + `cloudwatch-read` policy | Agent 에게 CloudWatch 읽기 권한 위임 |
-
-
-### Cross-Account IAM 신뢰 관계
-
-
-| 구성 요소 | 값 | 설명 |
-|---|---|---|
-| Trust Principal | `arn:aws:iam::<AGENT_ACCOUNT>:role/aiops-demo-${DEMO_USER}-cloudwatch-wrapper-role` | 이 Role 만 assume 가능 |
-| ExternalId | `aiops-workshop-2026` (행사 진행자 제공) | confused deputy 방지 |
-| Permission | `cloudwatch:DescribeAlarms`, `DescribeAlarmHistory`, `ListTagsForResource` | 최소 권한 |
-
-
-### 시퀀스 다이어그램
+### 인증 흐름
 
 ```
-Agent       Gateway     Lambda          STS             Target CW
-  │            │           │              │                 │
-  │  MCP call  │           │              │                 │
-  ├───────────▶│           │              │                 │
-  │            │  invoke   │              │                 │
-  │            ├──────────▶│              │                 │
-  │            │           │              │                 │
-  │            │           │ AssumeRole   │                 │
-  │            │           ├─────────────▶│                 │
-  │            │           │ temp creds   │                 │
-  │            │           │◀─────────────┤                 │
-  │            │           │              │                 │
-  │            │           │  DescribeAlarms (temp creds)   │
-  │            │           ├────────────────────────────────▶│
-  │            │           │  alarms response               │
-  │            │           │◀────────────────────────────────┤
-  │            │           │              │                 │
-  │            │  response │              │                 │
-  │            │◀──────────┤              │                 │
-  │  tool result           │              │                 │
-  │◀───────────┤           │              │                 │
+Workshop Lambda                    Sample App Account
+      │                                   │
+      │ ① boto3.client("lambda",          │
+      │    access_key_id=...,             │
+      │    secret_access_key=...)         │
+      │                                   │
+      │ ② lambda:Invoke (SDK 호출)         │
+      │   (SigV4 자동 — SDK 내부)          │
+      ├──────────────────────────────────▶│ Proxy Lambda
+      │                                   │
+      │                                   │ ③ IAM User 권한 검증
+      │                                   │   (lambda:InvokeFunction 허용)
+      │                                   │
+      │                                   │ ④ 자기 계정 CloudWatch 조회
+      │                                   │   (Lambda execution role 권한)
+      │                                   │
+      │ ⑤ alarm 데이터 응답                   │
+      │◀──────────────────────────────────┤
 ```
 
-### Lambda 코드 변경점 (diff)
+### Sample App Account 구성 (행사 진행자가 사전 설정)
 
-기존 Phase 2 코드와의 차이:
-
-```diff
-+ CROSS_ACCOUNT_ROLE_ARN = os.environ.get("CROSS_ACCOUNT_ROLE_ARN")
-+ EXTERNAL_ID = os.environ.get("EXTERNAL_ID")
-+
-+ def _get_cw_client():
-+     if CROSS_ACCOUNT_ROLE_ARN:
-+         sts = boto3.client("sts")
-+         params = {
-+             "RoleArn": CROSS_ACCOUNT_ROLE_ARN,
-+             "RoleSessionName": "aiops-monitor-cross-account",
-+         }
-+         if EXTERNAL_ID:
-+             params["ExternalId"] = EXTERNAL_ID
-+         creds = sts.assume_role(**params)["Credentials"]
-+         return boto3.client(
-+             "cloudwatch",
-+             aws_access_key_id=creds["AccessKeyId"],
-+             aws_secret_access_key=creds["SecretAccessKey"],
-+             aws_session_token=creds["SessionToken"],
-+         )
-+     return boto3.client("cloudwatch")
-+
-- cw = boto3.client("cloudwatch")
-+ cw = _get_cw_client()
-```
-
-### 보안 고려사항
-
-
-| 항목 | 설명 |
+| 자원 | 설명 |
 |---|---|
-| **ExternalId** | confused deputy 문제 방지 — Lambda 가 의도하지 않은 계정의 role 을 assume 하는 것을 차단 |
-| **최소 권한** | Target Role 에 CloudWatch read 만 부여 (write/delete 불가) |
-| **Trust 범위** | 특정 Lambda Role ARN 만 허용 (계정 전체 `root` 가 아님) |
-| **임시 자격증명** | AssumeRole 결과는 1시간 TTL 임시 토큰 — 영구 키 노출 위험 없음 |
-| **하위 호환** | `CROSS_ACCOUNT_ROLE_ARN` 미설정 시 기존 동작 유지 |
+| **Proxy Lambda** | CloudWatch alarm 읽기 전용 API 제공 |
+| **IAM User** | 전용 user (경로: `/workshop/`) |
+| **IAM Policy** | `lambda:InvokeFunction` — Proxy Lambda ARN 만 허용 |
+| **Access Key** | Workshop 중 참가자에게 전달, 종료 후 삭제 |
 
+### Workshop Account 구성 (참가자 실행)
 
-### Multi-Account 확장 패턴
+| 자원 | 변경 내용 |
+|---|---|
+| **`cognito.yaml` — 환경변수** | `CloudWatchWrapperLambda` 에 `SOURCE_*` 4개 추가 |
+| **`handler.py` 코드** | Access Key 기반 Lambda invoke 로직으로 교체 |
+| **IAM Role** | **변경 없음** — explicit credential 사용이므로 execution role 무관 |
 
-N개 계정을 모니터링해야 할 경우:
+### 시퀀스 다이어그램 (End-to-End)
 
-```python
-# 환경변수: CROSS_ACCOUNT_ROLES=role_arn_1,role_arn_2,...
-roles = os.environ.get("CROSS_ACCOUNT_ROLES", "").split(",")
-for role_arn in roles:
-    cw = _get_cw_client_for(role_arn)
-    alarms += _fetch_alarms(cw)
+```
+Operator  Supervisor  Monitor_A2A  Gateway  CW_Lambda       Proxy_Lambda    CW
+   │          │           │          │          │                │           │
+   │  query   │           │          │          │                │           │
+   ├─────────▶│           │          │          │                │           │
+   │          │  A2A call │          │          │                │           │
+   │          ├──────────▶│          │          │                │           │
+   │          │           │ MCP tool │          │                │           │
+   │          │           ├─────────▶│          │                │           │
+   │          │           │          │  invoke  │                │           │
+   │          │           │          ├─────────▶│                │           │
+   │          │           │          │          │                │           │
+   │          │           │          │          │ lambda:Invoke  │           │
+   │          │           │          │          │ (Access Key)   │           │
+   │          │           │          │          ├───────────────▶│           │
+   │          │           │          │          │                │ describe  │
+   │          │           │          │          │                ├──────────▶│
+   │          │           │          │          │                │  alarms   │
+   │          │           │          │          │                │◀──────────┤
+   │          │           │          │          │ JSON response  │           │
+   │          │           │          │          │◀───────────────┤           │
+   │          │           │          │          │                │           │
+   │          │           │  result  │          │                │           │
+   │          │           │◀─────────┤◀─────────┤                │           │
+   │          │  response │          │          │                │           │
+   │          │◀──────────┤          │          │                │           │
+   │  answer  │           │          │          │                │           │
+   │◀─────────┤           │          │          │                │           │
 ```
 
-→ 본 Phase 6 는 단일 Target Account 로 패턴 학습. 복수 계정은 동일 패턴 반복.
+### 트러블슈팅
+
+| 증상 | 원인 | 해결 |
+|---|---|---|
+| `AccessDeniedException` | Access Key 의 IAM User 에 invoke 권한 없음 | 행사 진행자에게 확인 요청 |
+| `ResourceNotFoundException` | Lambda ARN 오타 | `SOURCE_LAMBDA_ARN` 값 재확인 |
+| `InvalidSignatureException` | Secret Access Key 오타 또는 만료 | 행사 진행자에게 key 재발급 요청 |
+| Lambda timeout | Proxy Lambda 응답 지연 | Lambda timeout 15초 → 30초 증가 검토 |
+| 기존 alarm 조회 안 됨 | handler 교체 후 자기 계정 조회 불가 | 원본 handler 복원 (`cp handler.py.bak handler.py`) |
 
 ---
 
-## 5. References
+## 6. 보안 고려사항
 
+| 항목 | 조치 |
+|---|---|
+| Access Key 노출 범위 | Lambda 환경변수에만 저장 — 코드 repo 에 commit 금지 |
+| 권한 최소화 | IAM User 는 단일 Lambda ARN 의 `lambda:InvokeFunction` 만 보유 |
+| Key 수명 관리 | Workshop 종료 후 행사 진행자가 Access Key 삭제/비활성화 |
+| Proxy Lambda 범위 | CloudWatch read-only — `DescribeAlarms`, `DescribeAlarmHistory` 만 |
+
+---
+
+## 7. References
 
 | 자료 | 용도 |
 |---|---|
-| [AWS STS AssumeRole](https://docs.aws.amazon.com/STS/latest/APIReference/API_AssumeRole.html) | AssumeRole API 레퍼런스 |
-| [Cross-account IAM roles](https://docs.aws.amazon.com/IAM/latest/UserGuide/tutorial_cross-account-with-roles.html) | AWS 공식 cross-account 튜토리얼 |
-| [Confused deputy problem](https://docs.aws.amazon.com/IAM/latest/UserGuide/confused-deputy.html) | ExternalId 사용 이유 |
-| [`infra/cognito-gateway/cognito.yaml`](../../infra/cognito-gateway/cognito.yaml) | CloudWatchWrapperLambdaRole 원본 |
-| [`infra/cognito-gateway/lambda/cloudwatch_wrapper/handler.py`](../../infra/cognito-gateway/lambda/cloudwatch_wrapper/handler.py) | Lambda 코드 원본 |
+| [IAM User Access Keys](https://docs.aws.amazon.com/IAM/latest/UserGuide/id_credentials_access-keys.html) | Access Key 개념 |
+| [boto3 Lambda invoke](https://boto3.amazonaws.com/v1/documentation/api/latest/reference/services/lambda/client/invoke.html) | Lambda SDK 호출 |
+| [`infra/cognito-gateway/cognito.yaml`](../../infra/cognito-gateway/cognito.yaml) | CloudWatchWrapperLambda 원본 |
 | [`docs/learn/phase2.md`](phase2.md) | Gateway + Lambda 기본 구조 (Phase 6 의 기반) |
+| [`docs/learn/phase5.md`](phase5.md) | Supervisor + A2A 구조 (Phase 6 검증에 사용) |
