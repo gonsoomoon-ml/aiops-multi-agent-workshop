@@ -109,23 +109,10 @@ fi
 info "Role: $ROLE_NAME"
 
 POLICIES=(
-    # Phase 0: EC2 시뮬레이터 + CloudWatch Alarm + CFN 배포
-    "arn:aws:iam::aws:policy/AmazonEC2FullAccess"
-    "arn:aws:iam::aws:policy/CloudWatchFullAccess"
-    "arn:aws:iam::aws:policy/AWSCloudFormationFullAccess"
+    # 모든 AWS 서비스 허용 (IAM 제외) — EC2, CloudWatch, CFN, Cognito, Lambda, S3, ECR, Bedrock, AgentCore, SSM, SecretsManager 등
+    "arn:aws:iam::aws:policy/PowerUserAccess"
+    # IAM role/policy 생성 — Lambda/Runtime 실행 역할, CFN CAPABILITY_NAMED_IAM
     "arn:aws:iam::aws:policy/IAMFullAccess"
-    # Phase 1+: Bedrock 모델 호출
-    "arn:aws:iam::aws:policy/AmazonBedrockFullAccess"
-    # Phase 2: Cognito + Lambda + S3 + AgentCore Gateway
-    "arn:aws:iam::aws:policy/AmazonCognitoPowerUser"
-    "arn:aws:iam::aws:policy/AWSLambda_FullAccess"
-    "arn:aws:iam::aws:policy/AmazonS3FullAccess"
-    "arn:aws:iam::aws:policy/BedrockAgentCoreFullAccess"
-    # Phase 3+: ECR (Docker image push) + SecretsManager
-    "arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryFullAccess"
-    "arn:aws:iam::aws:policy/SecretsManagerReadWrite"
-    # Phase 4: SSM Parameter Store (GitHub PAT)
-    "arn:aws:iam::aws:policy/AmazonSSMFullAccess"
 )
 
 ATTACHED=$(aws iam list-attached-role-policies --role-name "$ROLE_NAME" --query 'AttachedPolicies[].PolicyArn' --output text)
