@@ -194,7 +194,7 @@ bash bootstrap.sh
 | **3**   | AgentCore Runtime — Monitor               | Monitor Agent → AgentCore Runtime 승격                                                                  | [docs/learn/phase3.md](docs/learn/phase3.md) | 60 분  | ✅   |
 | **4**   | AgentCore Runtime — Incident + Storage    | Incident Runtime + storage Lambda (`STORAGE_BACKEND=s3` default / `github` 선택)                        | [docs/learn/phase4.md](docs/learn/phase4.md) | 60 분  | ✅   |
 | **5**   | AgentCore A2A — Supervisor + 2 sub-agents | Supervisor + Monitor A2A + Incident A2A — A2A 활성화 (`serve_a2a` + LazyExecutor)                        | [docs/learn/phase5.md](docs/learn/phase5.md) | 90 분  | ✅   |
-| **6**   | EC Mall 통합                                | EC mall 통합 — alarm 추가만으로 동일 시나리오 재현 (외부 의존)                                                           | —                                              | —     | 🚧  |
+| **6**   | Cross-Account Monitoring                  | STS AssumeRole 기반 Target Account CloudWatch alarm 통합 조회 — Food Order 데모 앱 모니터링                          | [docs/learn/phase6.md](docs/learn/phase6.md) | 20 분  | ✅   |
 
 
 > ✅ = narrative 작성 완료 / 🚧 = 작성 대기 — 미완성 시 코드 직접 참조.
