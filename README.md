@@ -185,7 +185,7 @@ bash bootstrap.sh
 각 phase 의 narrative 는 `docs/learn/phase{N}.md`. **순서대로** 읽고 해당 phase 의 deploy 명령 실행. 각 narrative 에 "무엇 (what it is)" + "어떻게 동작 (how it works)" + 검증 (P{N}-A1~A5 = phase 별 acceptance check 5종) 포함.
 
 
-| Phase   | 이름                                        | 핵심 산출물                                                                                                | Narrative                                      | 예상 소요 | 상태  |
+| Phase   | 이름                                        | 핵심 산출물                                                                                                | Narrative                                      | <nobr>예상 소요</nobr> | <nobr>상태</nobr>  |
 | ----- | ----------------------------------------- | ----------------------------------------------------------------------------------------------------- | ---------------------------------------------- | ----- | --- |
 | **<nobr>환경구성</nobr>** | 실습 환경 구축         | Workshop code server + kiro 설정     | [docs/learn/workshop_setup.md](docs/learn/workshop_setup.md)    |  10 분   | ✅  |
 | **0**   | 기반 인프라                                    | EC2 시뮬레이터 + CloudWatch alarm 2종 (real + noise) + 카오스 스크립트                                             | [docs/learn/phase0.md](docs/learn/phase0.md) | 30 분  | ✅   |
