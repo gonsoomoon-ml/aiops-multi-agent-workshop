@@ -109,13 +109,10 @@ fi
 info "Role: $ROLE_NAME"
 
 POLICIES=(
-    "arn:aws:iam::aws:policy/AmazonEC2FullAccess"
-    "arn:aws:iam::aws:policy/CloudWatchFullAccess"
-    "arn:aws:iam::aws:policy/AmazonSSMFullAccess"
-    "arn:aws:iam::aws:policy/AmazonBedrockFullAccess"
-    "arn:aws:iam::aws:policy/BedrockAgentCoreFullAccess"
-    "arn:aws:iam::aws:policy/AWSLambda_FullAccess"
-    "arn:aws:iam::aws:policy/AmazonS3FullAccess"
+    # 모든 AWS 서비스 허용 (IAM 제외) — EC2, CloudWatch, CFN, Cognito, Lambda, S3, ECR, Bedrock, AgentCore, SSM, SecretsManager 등
+    "arn:aws:iam::aws:policy/PowerUserAccess"
+    # IAM role/policy 생성 — Lambda/Runtime 실행 역할, CFN CAPABILITY_NAMED_IAM
+    "arn:aws:iam::aws:policy/IAMFullAccess"
 )
 
 ATTACHED=$(aws iam list-attached-role-policies --role-name "$ROLE_NAME" --query 'AttachedPolicies[].PolicyArn' --output text)
