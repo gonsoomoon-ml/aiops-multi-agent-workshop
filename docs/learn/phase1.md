@@ -173,4 +173,3 @@ rule_retirement (90일+ AND ack 0)
 | [`agents/monitor/shared/agent.py`](../../agents/monitor/shared/agent.py) | Strands Agent factory (60+ 줄) — 학습 entry |
 | [`agents/monitor/shared/prompts/system_prompt_past.md`](../../agents/monitor/shared/prompts/system_prompt_past.md) | System prompt (227 줄) — 역할 → 도구 → 진단 유형 → 우선순위/절차 → 응답 형식 → 예시 → 주의 흐름 |
 | [`data/mock/phase1/alarm_history.py`](../../data/mock/phase1/alarm_history.py) | Mock data + ground truth + auto_resolve 패턴 docstring (271 줄) |
-| [`../design/plan_summary.md`](../design/plan_summary.md) §Monitor Agent 3가지 진단 유형 | 3 type 정량 조건 표 |

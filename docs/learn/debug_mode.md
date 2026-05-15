@@ -357,5 +357,4 @@ User      Monitor    Cognito    Gateway    Lambda     Bedrock
 - dba 의 hook 등록: lines 392-396 (`register_hooks` + `add_callback`)
 - 차용 핵심: ANSI 상수 (lines 24-31), 박스 보더 모티프 (lines 289-390), content block iteration (lines 323-371), `dump_prompt` delta 전략 (call 마다 새 messages 만 dump)
 - FlowHook 사용 이유: Strands `stream_async()` 는 post-call (`message complete` / `usage`) 만 노출 → pre-call (TTFT 시작점, 새 messages delta dump, MCP 호출 직전) 가시화 위해 `HookProvider` 필요. dba 와 차이: Memory 무관 — debug 가시화 전용
-- AgentCore Runtime build context 동작: `docs/design/phase3.md`
 

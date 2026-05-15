@@ -6,9 +6,9 @@
 > Phase 5 (AgentCore NL Policy) 는 본 프로젝트 scope 에서 **건너뜀** — Phase 4 → Phase 6a 직행. Phase 5 결정에 묶여있던 항목 (incidents/ log, AgentCore Memory) 은 §1 에서 재배치.
 > Phase 0/2/3/4 자원 (Cognito UserPool, Client, Gateway, 3 Target, Lambda × 3, Monitor + Incident Runtime) 은 **무변경** — Phase 6a PR 영향 범위 격리, 회귀 0건 목표.
 
-> **A2A 개념 사전 학습**: 본 phase 는 A2A 프로토콜을 처음 활성화한다. A2A 가 무엇이고 어떻게 동작하는지에 대한 직관적 설명은 `docs/research/a2a_intro.md` 참고. 본 design 은 그 기반 위에서 구체적 구현 결정을 다룬다.
+> **A2A 개념 사전 학습**: 본 phase 는 A2A 프로토콜을 처음 활성화한다. A2A 가 무엇이고 어떻게 동작하는지에 대한 직관적 설명은 `docs/learn/a2a_intro.md` 참고. 본 design 은 그 기반 위에서 구체적 구현 결정을 다룬다.
 >
-> **Reference truth**: 2026-05-08 research 에서 Strands SDK + AgentCore Runtime A2A 의 **실제 API 표면** 을 확인 (`docs/research/a2a_intro.md` §참고 + design 본문 각주). 본 design 의 코드 sketch 는 그 결과를 반영한 *교정본* — 초기 design (commit `f380dcc`) 의 가정 일부 (Strands `Agent(sub_agents=[RemoteA2aAgent…])`, `A2AStarletteApplication` direct wrap, A2A 환경에서 `@app.entrypoint` 유지 등) 는 **실제 API 와 불일치하여 본 follow-up 으로 수정됨**.
+> **Reference truth**: 2026-05-08 research 에서 Strands SDK + AgentCore Runtime A2A 의 **실제 API 표면** 을 확인 (`docs/learn/a2a_intro.md` §참고 + design 본문 각주). 본 design 의 코드 sketch 는 그 결과를 반영한 *교정본* — 초기 design (commit `f380dcc`) 의 가정 일부 (Strands `Agent(sub_agents=[RemoteA2aAgent…])`, `A2AStarletteApplication` direct wrap, A2A 환경에서 `@app.entrypoint` 유지 등) 는 **실제 API 와 불일치하여 본 follow-up 으로 수정됨**.
 >
 > **Preservation rule (2026-05-09)**: workshop instructor 가 Phase 4 (HTTP, 작동) 와 Phase 6a (A2A, 신규) 를 **side-by-side** 비교 가능하도록 `agents/monitor/`, `agents/incident/` 등 이전 phase 코드는 **수정 금지**. Phase 6a 의 Monitor/Incident A2A 변형은 신규 디렉토리 `agents/monitor_a2a/` + `agents/incident_a2a/` 에 작성 (originally §2-4 의 in-place 수정 계획을 폐기). 변경 사항: §2-3 에 두 디렉토리 추가, §2-4 의 monitor/incident 수정 행 제거, Step F 가 retrofit 이 아닌 신규 작성으로 정의 변경.
 >
@@ -1046,7 +1046,7 @@ bash infra/phase6a/teardown.sh
 | `/home/ubuntu/sample-deep-insight/managed-agentcore/` | per-agent 모델 분리 (Supervisor/Change 가 별 MODEL_ID env), OTEL service.name 자동 |
 | Phase 4 `infra/github-lambda/github_lambda.yaml` | `infra/phase6a/deployments_lambda.yaml` 의 cross-stack policy 패턴 |
 | Phase 4 `infra/github-lambda/setup_github_target.py` | `infra/phase6a/setup_deployments_target.py` 의 create-or-update 패턴 (A1 fix) |
-| `docs/research/a2a_intro.md` | 본 phase 의 A2A 개념 사전 학습 자료 — workshop 청중이 본 design 읽기 전 권장 |
+| `docs/learn/a2a_intro.md` | 본 phase 의 A2A 개념 사전 학습 자료 — workshop 청중이 본 design 읽기 전 권장 |
 
 **~~기존 차용 (deprecated by research)~~**:
 - ~~`host_adk_agent/agent.py:37-100` 의 `RemoteA2aAgent` + `LazyClientFactory` 패턴~~ → Google ADK 전용. Strands 로 차용 불가. Phase 6a 는 `@tool` wrapping `a2a.client.A2AClient` 패턴 (`realestate_coordinator` 차용) 으로 대체

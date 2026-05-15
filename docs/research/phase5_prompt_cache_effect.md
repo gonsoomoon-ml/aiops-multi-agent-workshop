@@ -1,6 +1,6 @@
 # Phase 5 — Bedrock Prompt Cache Latency Effect (deep-dive)
 
-`docs/learn/phase5_detail.md §5` 의 첫 측정에서 의외 결과 (cache ON 이 OFF 보다 +4.75초 **더 느림**) 가 나옴. 본 문서는 그 결과에 의문을 갖고 진행한 **6단계 후속 측정** 의 종합 정리. 워크샵 청중이 "prompt cache 가 정말 latency 줄이나?" 라는 질문에 대해, **size-dependent + wrapper-sensitive** 라는 3-layer 모델을 데이터로 backing.
+`docs/research/phase5_detail.md §5` 의 첫 측정에서 의외 결과 (cache ON 이 OFF 보다 +4.75초 **더 느림**) 가 나옴. 본 문서는 그 결과에 의문을 갖고 진행한 **6단계 후속 측정** 의 종합 정리. 워크샵 청중이 "prompt cache 가 정말 latency 줄이나?" 라는 질문에 대해, **size-dependent + wrapper-sensitive** 라는 3-layer 모델을 데이터로 backing.
 
 핵심 결론 (선행 요약):
 - **bare Bedrock API + 100K cached tokens**: -38% latency ✅ (AWS 공식 claim "up to 85%" 의 절반 수준)

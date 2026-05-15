@@ -264,11 +264,13 @@ agents/monitor/runtime/                         ← Docker build context
 
 **Import path 영향**:
 
-| | Local | Container |
-|---|---|---|
-| Project root | `aiops-multi-agent-demo/` | `/app/` |
-| Shared import | `from agents.monitor.shared.agent` | `from shared.agent` |
-| Debug import | `from _shared_debug` | `from _shared_debug` (동일) |
+
+|               | Local                              | Container                 |
+| ------------- | ---------------------------------- | ------------------------- |
+| Project root  | `aiops-multi-agent-demo/`          | `/app/`                   |
+| Shared import | `from agents.monitor.shared.agent` | `from shared.agent`       |
+| Debug import  | `from _shared_debug`               | `from _shared_debug` (동일) |
+
 
 → **같은 `shared/agent.py` 파일** 이지만 import 경로가 환경 별 다름. `agents/monitor/local/run.py` 는 `from agents.monitor.shared.agent`, `agentcore_runtime.py` 는 `from shared.agent` (build context flatten 으로 prefix 사라짐). **single source of truth** = `shared/agent.py` 파일 1개 — 같은 코드가 local 과 container 양쪽에서 실행되어 응답 동일성 보장.
 
@@ -334,13 +336,13 @@ agent.stream_async(query)
 
 | 자료                                                                                                 | 용도                                                                 |
 | -------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------ |
-| [`agents/monitor/runtime/agentcore_runtime.py`](../../agents/monitor/runtime/agentcore_runtime.py) | Runtime entrypoint — `@app.entrypoint` + SSE yield                 |
-| [`agents/monitor/runtime/deploy_runtime.py`](../../agents/monitor/runtime/deploy_runtime.py)       | 5단계 배포 (build context + toolkit + IAM/OAuth + READY 대기)            |
-| [`agents/monitor/runtime/Dockerfile`](../../agents/monitor/runtime/Dockerfile)                     | uv-based Python 3.12 + OTEL distro                                 |
-| [`agents/monitor/runtime/teardown.sh`](../../agents/monitor/runtime/teardown.sh)                   | 6 step reverse + negative check                                    |
-| [`agents/monitor/runtime/README.md`](../../agents/monitor/runtime/README.md)                       | 폴더 단위 운용 안내 (deploy / invoke / teardown / debug)                   |
-| [`debug_mode.md`](debug_mode.md)                                                                   | DEBUG=1 시 FlowHook / TTFT / cache 통계 — Phase 3 container 에서도 동작    |
-| [`phase2.md`](phase2.md)                                                                           | Phase 2 narrative — Phase 3 가 그대로 import 하는 `shared/` helpers 의 출처 |
-| [`../design/phase3.md`](../design/phase3.md)                                                       | 의사결정 로그 (D1~D10) — OAuth provider 도입 / SSE schema / IAM extras     |
+| `[agents/monitor/runtime/agentcore_runtime.py](../../agents/monitor/runtime/agentcore_runtime.py)` | Runtime entrypoint — `@app.entrypoint` + SSE yield                 |
+| `[agents/monitor/runtime/deploy_runtime.py](../../agents/monitor/runtime/deploy_runtime.py)`       | 5단계 배포 (build context + toolkit + IAM/OAuth + READY 대기)            |
+| `[agents/monitor/runtime/Dockerfile](../../agents/monitor/runtime/Dockerfile)`                     | uv-based Python 3.12 + OTEL distro                                 |
+| `[agents/monitor/runtime/teardown.sh](../../agents/monitor/runtime/teardown.sh)`                   | 6 step reverse + negative check                                    |
+| `[agents/monitor/runtime/README.md](../../agents/monitor/runtime/README.md)`                       | 폴더 단위 운용 안내 (deploy / invoke / teardown / debug)                   |
+| `[debug_mode.md](debug_mode.md)`                                                                   | DEBUG=1 시 FlowHook / TTFT / cache 통계 — Phase 3 container 에서도 동작    |
+| `[phase2.md](phase2.md)`                                                                           | Phase 2 narrative — Phase 3 가 그대로 import 하는 `shared/` helpers 의 출처 |
+|                                                                                                    |                                                                    |
 
 
