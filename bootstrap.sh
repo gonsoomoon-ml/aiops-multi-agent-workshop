@@ -23,7 +23,7 @@ echo -e "${BLUE}========================================${NC}"
 echo ""
 
 # ── 단계 1: 의존성 + AWS 자격증명 ─────────────────
-echo "=== 단계 1/4: Python 의존성 (uv sync) + AWS 자격증명 ==="
+echo "=== 단계 1/5: Python 의존성 (uv sync) + AWS 자격증명 ==="
 
 if ! command -v uv &>/dev/null; then
     fail "'uv'를 찾을 수 없습니다. 설치: curl -LsSf https://astral.sh/uv/install.sh | sh"
@@ -38,7 +38,7 @@ pass "AWS 자격증명 검증 완료"
 echo ""
 
 # ── 단계 2: .env ──────────────────────────────────
-echo "=== 단계 2/4: .env 파일 ==="
+echo "=== 단계 2/5: .env 파일 ==="
 
 if [[ -f .env ]]; then
     warn ".env 이미 존재 (덮어쓰지 않음 — 기존 값 유지)"
@@ -64,7 +64,7 @@ read_env() {
 }
 
 # ── 단계 3: AWS_REGION + DEMO_USER ────────────────
-echo "=== 단계 3/4: AWS_REGION + DEMO_USER ==="
+echo "=== 단계 3/5: AWS_REGION + DEMO_USER ==="
 
 # AWS_REGION (기존 .env 값 우선 → us-east-1 fallback)
 existing_region="$(read_env AWS_REGION)"
@@ -92,7 +92,7 @@ pass "DEMO_USER=$demo_user"
 echo ""
 
 # ── 단계 4: Storage backend ───────────────────────
-echo "=== 단계 4/4: Storage backend (Phase 4 runbook 데이터) ==="
+echo "=== 단계 4/5: Storage backend (Phase 4 runbook 데이터) ==="
 echo ""
 
 # 기존 .env 의 STORAGE_BACKEND → choice 번호로 매핑 (1=s3 / 2=github)
@@ -149,6 +149,25 @@ case "$backend_choice" in
         warn "알 수 없는 선택 ($backend_choice) — 건너뜀"
         ;;
 esac
+echo ""
+
+# ── 단계 5: X-Ray Transaction Search destination ──
+echo "=== 단계 5/5: X-Ray Transaction Search destination ==="
+echo "  AgentCore Runtime trace 가 GenAI Observability dashboard 에 적재되려면"
+echo "  X-Ray trace segment destination 이 'CloudWatchLogs' 여야 함 (account+region 단위 1회)."
+echo "  Phase 3/4/5 의 4개 Runtime deploy 마다 'Failed to enable observability ...'"
+echo "  warning 이 반복되는 원인 — 미리 1회 설정으로 회피."
+
+current_dest="$(aws xray get-trace-segment-destination --region "$aws_region" --query 'Destination' --output text 2>/dev/null || echo '')"
+if [ "$current_dest" = "CloudWatchLogs" ]; then
+    pass "이미 CloudWatchLogs (skip — idempotent)"
+elif aws xray update-trace-segment-destination --destination CloudWatchLogs --region "$aws_region" >/dev/null 2>&1; then
+    pass "X-Ray destination → CloudWatchLogs 설정"
+else
+    warn "X-Ray destination 설정 실패 — IAM 권한 부족 가능 (xray:UpdateTraceSegmentDestination)"
+    echo "    수동 재시도: aws xray update-trace-segment-destination --destination CloudWatchLogs --region $aws_region"
+    echo "    영향: Agent 동작 정상, 단 GenAI Observability dashboard trace 비어 보일 수 있음"
+fi
 echo ""
 
 # ── 완료 ──────────────────────────────────────────
