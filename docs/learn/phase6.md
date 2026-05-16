@@ -126,7 +126,7 @@ uv run agents/supervisor/runtime/invoke_runtime.py --query "현재 알람 상태
 
 ```bash
 aws logs tail "/aws/lambda/aiops-demo-${DEMO_USER}-cloudwatch-wrapper" \
-  --since 5m --region "${AWS_REGION:-us-west-2}"
+  --since 5m --region "${AWS_REGION:-us-east-1}"
 ```
 
 에러 없이 alarm 응답이 반환되면 성공.
