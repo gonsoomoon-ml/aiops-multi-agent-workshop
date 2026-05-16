@@ -132,6 +132,6 @@ cat <<EOF
     --query "StackSummaries[?starts_with(StackName, 'aiops-demo-') && StackStatus != 'DELETE_COMPLETE'].[StackName,StackStatus]" \\
     --output table
 
-  aws bedrock-agentcore-control list-agent-runtimes --region $REGION --output json | grep aiops_demo
+  aws bedrock-agentcore-control list-agent-runtimes --region $REGION --output json | grep -E 'aiops_(demo_)?'
 
 EOF

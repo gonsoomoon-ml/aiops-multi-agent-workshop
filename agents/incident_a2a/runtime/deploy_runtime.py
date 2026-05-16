@@ -3,7 +3,7 @@
 deploy_runtime.py — Phase 5 Incident A2A AgentCore Runtime 배포
 
 Phase 4 ``agents/incident/runtime/deploy_runtime.py`` 와 동일 5-step 흐름. 차이점:
-  - **agent_name = ``aiops_demo_${DEMO_USER}_incident_a2a``** (Phase 4 incident 와 별 Runtime)
+  - **agent_name = ``aiops_${DEMO_USER}_incident_a2a``** (Phase 4 incident 와 별 Runtime, `_demo` 제거 — 60자 trace destination 한도)
   - **protocol="A2A"** + customJWTAuthorizer (allowedClients=[Client] — Option X, Phase 2 재사용)
   - Build context Option A: **Phase 4 monitor/shared (helper) + Phase 4 incident/shared
     (truth)** 모두 copy. incident_a2a 자체에 shared/ 없음, runtime/ 만 보유 (Option G —
@@ -44,7 +44,7 @@ NC = "\033[0m"
 
 DEMO_USER = os.environ["DEMO_USER"]
 REGION = os.environ.get("AWS_REGION", "us-east-1")
-AGENT_NAME = f"aiops_demo_{DEMO_USER}_incident_a2a"
+AGENT_NAME = f"aiops_{DEMO_USER}_incident_a2a"
 OAUTH_PROVIDER_NAME = f"{AGENT_NAME}_gateway_provider"
 
 

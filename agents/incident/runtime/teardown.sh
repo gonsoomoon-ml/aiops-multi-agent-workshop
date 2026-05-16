@@ -13,7 +13,7 @@ PROJECT_ROOT="$(cd "${SCRIPT_DIR}/../../.." && pwd)"
 
 REGION="${AWS_REGION:-us-east-1}"
 DEMO_USER="${DEMO_USER:?DEMO_USER 미설정 (repo root .env 필요)}"
-AGENT_NAME="aiops_demo_${DEMO_USER}_incident"
+AGENT_NAME="aiops_${DEMO_USER}_incident"
 OAUTH_PROVIDER_NAME="${INCIDENT_OAUTH_PROVIDER_NAME:-${AGENT_NAME}_gateway_provider}"
 RUNTIME_ID="${INCIDENT_RUNTIME_ID:-}"
 ECR_REPO="bedrock-agentcore-${AGENT_NAME}"
@@ -119,7 +119,7 @@ fi
 # ── dependency 보존 확인 (negative check, P4-A5) ──────────────
 echo -e "${YELLOW}[verify] dependency 보존 확인 (Monitor Runtime / Cognito stack)${NC}"
 MONITOR_ID=$(aws bedrock-agentcore-control list-agent-runtimes --region "$REGION" \
-    --query "agentRuntimes[?agentRuntimeName=='aiops_demo_${DEMO_USER}_monitor'].agentRuntimeId" \
+    --query "agentRuntimes[?agentRuntimeName=='aiops_${DEMO_USER}_monitor'].agentRuntimeId" \
     --output text 2>/dev/null || echo "")
 if [ -n "$MONITOR_ID" ] && [ "$MONITOR_ID" != "None" ]; then
     echo -e "  ${GREEN}✓ Monitor Runtime 보존 (${MONITOR_ID})${NC}"

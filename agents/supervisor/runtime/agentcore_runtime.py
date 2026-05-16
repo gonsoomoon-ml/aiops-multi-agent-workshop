@@ -103,7 +103,7 @@ REGION = os.environ.get("AWS_REGION", "us-east-1")
 OAUTH_PROVIDER_NAME = os.environ["OAUTH_PROVIDER_NAME"]
 COGNITO_GATEWAY_SCOPE = os.environ["COGNITO_GATEWAY_SCOPE"]
 DEMO_USER = os.environ.get("DEMO_USER", "ubuntu")
-AGENT_NAME = f"aiops_demo_{DEMO_USER}_supervisor"
+AGENT_NAME = f"aiops_{DEMO_USER}_supervisor"
 
 MONITOR_A2A_ARN = os.environ["MONITOR_A2A_RUNTIME_ARN"]
 INCIDENT_A2A_ARN = os.environ["INCIDENT_A2A_RUNTIME_ARN"]

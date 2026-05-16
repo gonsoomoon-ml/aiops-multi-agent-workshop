@@ -7,7 +7,7 @@ Phase 2 의 Gateway 에 `github-storage` Target 1건 추가. Phase 2 Cognito sta
 ## 사전 조건
 
 1. **Phase 2 완료** — `infra/cognito-gateway/deploy.sh` 통과 + repo root `.env` 채워진 상태 (`DEMO_USER`, `GATEWAY_ID`, `AWS_REGION` 등).
-2. **Phase 3 완료** — Monitor Runtime READY (`aiops_demo_${DEMO_USER}_monitor` alive).
+2. **Phase 3 완료** — Monitor Runtime READY (`aiops_${DEMO_USER}_monitor` alive).
 3. **GitHub PAT 등록** — SSM SecureString `/aiops-demo/github-token` 에 GitHub Personal Access Token 저장.
 4. AWS 자격 증명 + Docker daemon + `uv sync` 완료.
 

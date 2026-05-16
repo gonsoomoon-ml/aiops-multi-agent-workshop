@@ -3,7 +3,7 @@
 deploy_runtime.py — Phase 5 Supervisor Agent AgentCore Runtime 배포 (HTTP)
 
 Phase 4 incident `deploy_runtime.py` 와 다른 점 (Option X):
-  - **agent_name = ``aiops_demo_${DEMO_USER}_supervisor``**
+  - **agent_name = ``aiops_${DEMO_USER}_supervisor``** (`_demo` 제거 — 60자 trace destination 한도)
   - **HTTP protocol** (operator 진입) — Phase 4 와 동일
   - **inbound authorizer 미설정** → SigV4 IAM default (Operator CLI 가 boto3
     invoke_agent_runtime 사용 — Phase 4 invoke 패턴 동일)
@@ -57,7 +57,7 @@ NC = "\033[0m"
 
 DEMO_USER = os.environ["DEMO_USER"]
 REGION = os.environ.get("AWS_REGION", "us-east-1")
-AGENT_NAME = f"aiops_demo_{DEMO_USER}_supervisor"
+AGENT_NAME = f"aiops_{DEMO_USER}_supervisor"
 # Option X — Phase 2 Client 재사용. Provider 명명은 Phase 4 incident 와 동일 패턴.
 OAUTH_PROVIDER_NAME = f"{AGENT_NAME}_gateway_provider"
 

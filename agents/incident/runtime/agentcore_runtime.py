@@ -4,7 +4,7 @@ agentcore_runtime.py — Phase 4 Incident Agent Runtime 진입점
 
 Monitor (`agents/monitor/runtime/agentcore_runtime.py`) 와 동일 골격 — `@app.entrypoint`
 + OAuth2CredentialProvider 자동 inject + MCPClient → Gateway 호출. 차이점:
-  - agent_name = ``aiops_demo_${DEMO_USER}_incident``
+  - agent_name = ``aiops_${DEMO_USER}_incident`` (60-char trace destination 한도 회피용 — `_demo` 제거)
   - tool filter = ``${STORAGE_BACKEND}-storage___`` prefix (env 기반: s3 default / github 선택)
   - payload = ``{"alarm_name": "..."}`` (Monitor 의 mode/query 와 다름)
   - Single mode (past/live 분기 없음)

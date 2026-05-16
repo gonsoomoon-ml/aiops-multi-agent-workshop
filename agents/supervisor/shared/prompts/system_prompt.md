@@ -52,7 +52,7 @@ JSON 1개로 통합 응답:
 
 ## 에러 / 응답 이상 처리
 
-- **sub-agent 가 `[sub-agent <name>: empty response]` 형식 literal 반환** (예: `[sub-agent aiops_demo_bob_monitor_a2a: empty response]`) → silent failure 로 간주. 재호출 금지 (운영자 응답 시간만 증가), `summary` 에 표기.
+- **sub-agent 가 `[sub-agent <name>: empty response]` 형식 literal 반환** (예: `[sub-agent aiops_bob_monitor_a2a: empty response]`) → silent failure 로 간주. 재호출 금지 (운영자 응답 시간만 증가), `summary` 에 표기.
 - **sub-agent JSON parse 실패** (Incident 가 비-JSON 텍스트 반환) → raw text 를 해당 `incidents[i].diagnosis` 에 보존, `severity: "unknown"`, `recommended_actions: ["manual review"]`.
 - **Monitor 호출만 실패** → `monitor: null` + 알람 없는 것으로 간주하지 말 것. summary 에 "Monitor 응답 실패 — 운영자 직접 확인 필요" 명시.
 - **호출 누락 정직성**: 시간 / 비용 제약으로 Incident 호출 생략 시, 생략 사실을 `summary` 에 반드시 기재. 침묵 = 정상 진단으로 오해될 위험.

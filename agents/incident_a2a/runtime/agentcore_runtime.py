@@ -93,7 +93,7 @@ from _shared_debug import is_debug  # noqa: E402
 OAUTH_PROVIDER_NAME = os.environ["OAUTH_PROVIDER_NAME"]
 COGNITO_GATEWAY_SCOPE = os.environ["COGNITO_GATEWAY_SCOPE"]
 DEMO_USER = os.environ.get("DEMO_USER", "ubuntu")
-AGENT_NAME = f"aiops_demo_{DEMO_USER}_incident_a2a"
+AGENT_NAME = f"aiops_{DEMO_USER}_incident_a2a"
 AGENT_DESC = "Incident Agent — alarm 1건 → runbook 조회 → 진단 + 권장 조치 JSON 반환"
 
 # Phase 4 와 동일 — storage Target 만 (runbook lookup).

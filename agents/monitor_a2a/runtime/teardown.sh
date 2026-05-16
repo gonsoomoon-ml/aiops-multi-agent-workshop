@@ -11,7 +11,7 @@ PROJECT_ROOT="$(cd "${SCRIPT_DIR}/../../.." && pwd)"
 
 REGION="${AWS_REGION:-us-east-1}"
 DEMO_USER="${DEMO_USER:?DEMO_USER 미설정 (repo root .env 필요)}"
-AGENT_NAME="aiops_demo_${DEMO_USER}_monitor_a2a"
+AGENT_NAME="aiops_${DEMO_USER}_monitor_a2a"
 OAUTH_PROVIDER_NAME="${MONITOR_A2A_OAUTH_PROVIDER_NAME:-${AGENT_NAME}_gateway_provider}"
 RUNTIME_ID="${MONITOR_A2A_RUNTIME_ID:-}"
 ECR_REPO="bedrock-agentcore-${AGENT_NAME}"
@@ -98,7 +98,7 @@ fi
 
 echo -e "${YELLOW}[verify] dependency 보존 확인 (monitor HTTP Runtime)${NC}"
 MONITOR_HTTP_ID=$(aws bedrock-agentcore-control list-agent-runtimes --region "$REGION" \
-    --query "agentRuntimes[?agentRuntimeName=='aiops_demo_${DEMO_USER}_monitor'].agentRuntimeId" --output text 2>/dev/null || echo "")
+    --query "agentRuntimes[?agentRuntimeName=='aiops_${DEMO_USER}_monitor'].agentRuntimeId" --output text 2>/dev/null || echo "")
 if [ -n "$MONITOR_HTTP_ID" ] && [ "$MONITOR_HTTP_ID" != "None" ]; then
     echo -e "  ${GREEN}✓ monitor (HTTP) Runtime 보존 (${MONITOR_HTTP_ID})${NC}"
 else

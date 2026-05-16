@@ -12,7 +12,7 @@ PROJECT_ROOT="$(cd "${SCRIPT_DIR}/../../.." && pwd)"
 
 REGION="${AWS_REGION:-us-east-1}"
 DEMO_USER="${DEMO_USER:?DEMO_USER 미설정 (repo root .env 필요)}"
-AGENT_NAME="aiops_demo_${DEMO_USER}_monitor"
+AGENT_NAME="aiops_${DEMO_USER}_monitor"
 OAUTH_PROVIDER_NAME="${MONITOR_OAUTH_PROVIDER_NAME:-${AGENT_NAME}_gateway_provider}"
 RUNTIME_ID="${MONITOR_RUNTIME_ID:-}"
 ECR_REPO="bedrock-agentcore-${AGENT_NAME}"

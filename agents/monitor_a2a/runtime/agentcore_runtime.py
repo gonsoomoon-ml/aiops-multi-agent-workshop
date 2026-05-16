@@ -106,7 +106,7 @@ from _shared_debug import is_debug  # noqa: E402
 OAUTH_PROVIDER_NAME = os.environ["OAUTH_PROVIDER_NAME"]
 COGNITO_GATEWAY_SCOPE = os.environ["COGNITO_GATEWAY_SCOPE"]
 DEMO_USER = os.environ.get("DEMO_USER", "ubuntu")
-AGENT_NAME = f"aiops_demo_{DEMO_USER}_monitor_a2a"
+AGENT_NAME = f"aiops_{DEMO_USER}_monitor_a2a"
 AGENT_DESC = (
     "Monitor Agent (live mode) — 현재 라이브 CloudWatch 알람 분류, "
     "real (유효) vs noise (개선) 식별"

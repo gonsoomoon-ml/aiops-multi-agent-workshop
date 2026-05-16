@@ -3,7 +3,7 @@
 deploy_runtime.py — Phase 4 Incident Agent AgentCore Runtime 배포
 
 Phase 3 monitor `deploy_runtime.py` 와 동일 5-step 흐름. 차이점:
-  - agent_name = ``aiops_demo_${DEMO_USER}_incident``
+  - agent_name = ``aiops_${DEMO_USER}_incident`` (60-char trace destination limit 회피용 — `_demo` 제거)
   - Build context 에 monitor/shared + incident/shared 모두 copy (phase4.md §3-6 Option A)
   - IAM inline policy 이름: ``IncidentRuntimeExtras``
 
@@ -54,7 +54,7 @@ NC = "\033[0m"
 
 DEMO_USER = os.environ["DEMO_USER"]
 REGION = os.environ.get("AWS_REGION", "us-east-1")
-AGENT_NAME = f"aiops_demo_{DEMO_USER}_incident"
+AGENT_NAME = f"aiops_{DEMO_USER}_incident"
 OAUTH_PROVIDER_NAME = f"{AGENT_NAME}_gateway_provider"
 
 

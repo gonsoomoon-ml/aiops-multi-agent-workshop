@@ -55,7 +55,7 @@ bash agents/monitor/runtime/teardown.sh
 ## CloudWatch 로그
 
 ```bash
-aws logs tail /aws/bedrock-agentcore/runtimes/aiops_demo_${DEMO_USER}_monitor \
+aws logs tail /aws/bedrock-agentcore/runtimes/aiops_${DEMO_USER}_monitor \
     --follow --region "${AWS_REGION:-us-east-1}"
 ```
 

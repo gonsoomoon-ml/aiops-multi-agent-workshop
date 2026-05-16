@@ -56,7 +56,7 @@ NC = "\033[0m"
 
 DEMO_USER = os.environ["DEMO_USER"]
 REGION = os.environ.get("AWS_REGION", "us-east-1")
-AGENT_NAME = f"aiops_demo_{DEMO_USER}_monitor"                          # D3
+AGENT_NAME = f"aiops_{DEMO_USER}_monitor"                               # D3
 OAUTH_PROVIDER_NAME = f"{AGENT_NAME}_gateway_provider"                  # D2
 
 
