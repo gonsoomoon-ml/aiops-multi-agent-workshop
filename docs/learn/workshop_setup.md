@@ -184,6 +184,10 @@ bash
 아래 명령어로 환경 설정 스크립트를 다운로드하고 실행 권한을 부여하세요.
 
 ```bash
+## Home directory 로 이동
+cd ~
+
+## Script 다운로드 및 실행권한 부여
 curl -fsSL https://raw.githubusercontent.com/gonsoomoon-ml/aiops-multi-agent-workshop/refs/heads/main/pre-requesite.sh -o pre-requesite.sh && chmod +x pre-requesite.sh && ls -l
 ```
 
