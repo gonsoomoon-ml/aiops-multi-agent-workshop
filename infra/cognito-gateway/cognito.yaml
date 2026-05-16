@@ -35,7 +35,9 @@ Resources:
     Type: AWS::Cognito::UserPoolDomain
     Properties:
       UserPoolId: !Ref UserPool
-      Domain: !Sub 'aiops-demo-${DemoUser}'
+      # Cognito UserPool Domain prefix 는 globally unique — DEMO_USER 만으론 워크샵 collision.
+      # AccountId 를 suffix 로 붙여 계정별 고유화 (deploy bucket 패턴과 동일).
+      Domain: !Sub 'aiops-demo-${DemoUser}-${AWS::AccountId}'
 
   UserPoolResourceServer:
     Type: AWS::Cognito::UserPoolResourceServer
