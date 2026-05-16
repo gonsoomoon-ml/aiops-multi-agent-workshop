@@ -64,9 +64,9 @@ bash infra/cognito-gateway/deploy.sh
 
 ```
 [deploy] Phase 2 deploy 완료
-  Gateway URL: https://aiops-demo-${DEMO_USER}-gateway-xxxx.gateway.bedrock-agentcore.us-west-2.amazonaws.com
-  Lambda (history_mock):  arn:aws:lambda:us-west-2:...:function:aiops-demo-${DEMO_USER}-history-mock
-  Lambda (cloudwatch):    arn:aws:lambda:us-west-2:...:function:aiops-demo-${DEMO_USER}-cloudwatch-wrapper
+  Gateway URL: https://aiops-demo-${DEMO_USER}-gateway-xxxx.gateway.bedrock-agentcore.us-east-1.amazonaws.com
+  Lambda (history_mock):  arn:aws:lambda:us-east-1:...:function:aiops-demo-${DEMO_USER}-history-mock
+  Lambda (cloudwatch):    arn:aws:lambda:us-east-1:...:function:aiops-demo-${DEMO_USER}-cloudwatch-wrapper
   검증: acceptance criteria
 ```
 
@@ -127,7 +127,7 @@ DEBUG=1 uv run python -m agents.monitor.local.run --mode past
 
 #### 통과 기준
 
-- Gateway alive: `aws bedrock-agentcore-control list-gateways --region us-west-2`
+- Gateway alive: `aws bedrock-agentcore-control list-gateways --region us-east-1`
 - Tools listed (4개): mode=past 호출 시 `history-mock___*` 2개 + mode=live 호출 시 `cloudwatch-wrapper___*` 2개 매칭
 - mode=past 출력이 Phase 1 baseline 과 동일 (3섹션 + 진단 매칭 정확)
 - mode=live 출력이 라이브 alarm 분류 (real/noise 라벨 신뢰)

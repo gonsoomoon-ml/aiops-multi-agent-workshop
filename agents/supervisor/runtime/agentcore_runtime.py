@@ -98,7 +98,7 @@ except ModuleNotFoundError:
 # 컨테이너에선 /app/_shared_debug/, 로컬에선 PROJECT_ROOT/_shared_debug/ (sys.path 위 양쪽 동일 import).
 from _shared_debug import dump_stream_event, is_debug  # noqa: E402
 
-REGION = os.environ.get("AWS_REGION", "us-west-2")
+REGION = os.environ.get("AWS_REGION", "us-east-1")
 # Option X — 단일 OAuth provider (Client 재사용, Phase 4 incident 와 동일 env 키)
 OAUTH_PROVIDER_NAME = os.environ["OAUTH_PROVIDER_NAME"]
 COGNITO_GATEWAY_SCOPE = os.environ["COGNITO_GATEWAY_SCOPE"]

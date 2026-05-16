@@ -117,7 +117,7 @@ set -a; source .env; set +a
 CloudWatch logs tail:
 
 ```bash
-aws logs tail /aws/bedrock-agentcore/runtimes/${MONITOR_RUNTIME_ID}-DEFAULT --follow --region "${AWS_REGION:-us-west-2}"
+aws logs tail /aws/bedrock-agentcore/runtimes/${MONITOR_RUNTIME_ID}-DEFAULT --follow --region "${AWS_REGION:-us-east-1}"
 ```
 
 > 로그 그룹 이름 형식: `/aws/bedrock-agentcore/runtimes/<MONITOR_RUNTIME_ID>-DEFAULT` — Runtime ID (예: `aiops_demo_${DEMO_USER}_monitor-<random-suffix>`) + `-DEFAULT` (endpoint qualifier) suffix. AgentCore 가 deploy 시 자동 생성. shell 에서 `${MONITOR_RUNTIME_ID}` 변수 사용 전 반드시 `set -a; source .env; set +a` 로 export (python-dotenv 는 invoke/deploy 안에서만 load, shell 은 미공유).

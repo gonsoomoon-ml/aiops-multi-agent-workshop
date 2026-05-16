@@ -66,9 +66,9 @@ read_env() {
 # ── 단계 3: AWS_REGION + DEMO_USER ────────────────
 echo "=== 단계 3/4: AWS_REGION + DEMO_USER ==="
 
-# AWS_REGION (기존 .env 값 우선 → us-west-2 fallback)
+# AWS_REGION (기존 .env 값 우선 → us-east-1 fallback)
 existing_region="$(read_env AWS_REGION)"
-default_region="${existing_region:-us-west-2}"
+default_region="${existing_region:-us-east-1}"
 echo -n "  AWS 리전 입력 (Enter 만 누르면 기본값 '$default_region' 적용): "
 read -r aws_region
 aws_region="${aws_region:-$default_region}"

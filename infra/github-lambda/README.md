@@ -21,13 +21,13 @@ Phase 2 의 Gateway 에 `github-storage` Target 1건 추가. Phase 2 Cognito sta
 발급 후 SSM 등록 — `read -s` 로 PAT 가 shell history / 화면에 남지 않게:
 
 ```bash
-read -s -p "GitHub PAT: " GH_PAT && aws ssm put-parameter --name /aiops-demo/github-token --type SecureString --value "$GH_PAT" --region us-west-2 --overwrite && unset GH_PAT
+read -s -p "GitHub PAT: " GH_PAT && aws ssm put-parameter --name /aiops-demo/github-token --type SecureString --value "$GH_PAT" --region us-east-1 --overwrite && unset GH_PAT
 ```
 
 값 검증 (decryption 권한 보유 시):
 
 ```bash
-aws ssm get-parameter --name /aiops-demo/github-token --with-decryption --region us-west-2 --query 'Parameter.Value' --output text
+aws ssm get-parameter --name /aiops-demo/github-token --with-decryption --region us-east-1 --query 'Parameter.Value' --output text
 ```
 
 `deploy.sh` 가 첫 단계에서 SSM 존재 여부를 확인 — 미등록 시 fail-fast.

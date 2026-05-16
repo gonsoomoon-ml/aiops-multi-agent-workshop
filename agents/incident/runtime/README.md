@@ -50,7 +50,7 @@ bash agents/incident/runtime/teardown.sh
 ```bash
 set -a; source .env; set +a   # INCIDENT_RUNTIME_ID + AWS_REGION
 aws logs tail /aws/bedrock-agentcore/runtimes/${INCIDENT_RUNTIME_ID}-DEFAULT \
-    --follow --region "${AWS_REGION:-us-west-2}"
+    --follow --region "${AWS_REGION:-us-east-1}"
 ```
 
 > 로그 그룹 형식: `/aws/bedrock-agentcore/runtimes/<INCIDENT_RUNTIME_ID>-DEFAULT` (Runtime ID + `-DEFAULT` endpoint qualifier).

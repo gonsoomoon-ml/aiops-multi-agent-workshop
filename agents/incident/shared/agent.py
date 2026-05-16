@@ -39,7 +39,7 @@ def create_agent(
     # Default 은 Monitor 와 동일 (Sonnet 4.6) — Incident 도 full agent 라 동급 reasoning 필요.
     # 운영 시 ``INCIDENT_MODEL_ID`` env 로 override 가능 (sample-deep-insight 의 per-agent 모델 분리 패턴).
     model_id = os.environ.get("INCIDENT_MODEL_ID") or "global.anthropic.claude-sonnet-4-6"
-    region = os.environ.get("AWS_REGION") or "us-west-2"
+    region = os.environ.get("AWS_REGION") or "us-east-1"
 
     prompt_text = _load_system_prompt(system_prompt_filename)
     dprint_box(

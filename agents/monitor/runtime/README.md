@@ -56,7 +56,7 @@ bash agents/monitor/runtime/teardown.sh
 
 ```bash
 aws logs tail /aws/bedrock-agentcore/runtimes/aiops_demo_${DEMO_USER}_monitor \
-    --follow --region "${AWS_REGION:-us-west-2}"
+    --follow --region "${AWS_REGION:-us-east-1}"
 ```
 
 ## Debug 모드 (선택)

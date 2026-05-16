@@ -141,7 +141,7 @@ LLM-A (Supervisor)  →  "이 사고 진단해줘"  →  LLM-B (Incident Agent)
 A2A 는 **JSON-RPC 2.0 over HTTP**. POST 1개로 시작:
 
 ```http
-POST https://bedrock-agentcore.us-west-2.amazonaws.com/runtimes/{arn}/invocations/
+POST https://bedrock-agentcore.us-east-1.amazonaws.com/runtimes/{arn}/invocations/
 Authorization: Bearer eyJraWQiOiJ...      ← Cognito JWT (또는 SigV4)
 Content-Type: application/json
 X-Amzn-Bedrock-AgentCore-Runtime-Session-Id: 550e8400-...

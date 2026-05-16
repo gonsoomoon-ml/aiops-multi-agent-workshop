@@ -45,7 +45,7 @@ load_dotenv(PROJECT_ROOT / ".env", override=True)
 sys.path.insert(0, str(PROJECT_ROOT))
 from _shared_debug import dprint  # noqa: E402
 
-REGION = os.getenv("AWS_REGION", "us-west-2")
+REGION = os.getenv("AWS_REGION", "us-east-1")
 RUNTIME_ARN = os.getenv("SUPERVISOR_RUNTIME_ARN")
 
 GREEN, YELLOW, BLUE, RED, DIM, NC = (

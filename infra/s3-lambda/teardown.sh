@@ -21,7 +21,7 @@ fail() { echo -e "${RED}[teardown]${NC} $1"; exit 1; }
     set -a; source "$PROJECT_ROOT/.env"; set +a
 }
 
-REGION="${AWS_REGION:-us-west-2}"
+REGION="${AWS_REGION:-us-east-1}"
 DEMO_USER="${DEMO_USER:-${USER:-ubuntu}}"
 STACK="aiops-demo-${DEMO_USER}-s3-lambda"
 TARGET_NAME="s3-storage"
@@ -110,6 +110,12 @@ if aws cloudformation describe-stacks --stack-name "$STACK" --region "$REGION" >
     log "  ✓ stack 삭제 완료"
 else
     warn "  (stack 없음 — skip)"
+fi
+
+# ── Lambda CW Log Group 삭제 (CFN 가 cascade 안 함 — first-invoke 시 auto-create) ──
+LAMBDA_LG="/aws/lambda/aiops-demo-${DEMO_USER}-s3-storage"
+if aws logs delete-log-group --region "$REGION" --log-group-name "$LAMBDA_LG" 2>/dev/null; then
+    log "  ✓ Lambda log group ${LAMBDA_LG} 삭제"
 fi
 
 # ── [4/4] .env cleanup + packaged template ────────

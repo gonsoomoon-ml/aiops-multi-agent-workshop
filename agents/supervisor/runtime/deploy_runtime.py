@@ -56,7 +56,7 @@ RED = "\033[0;31m"
 NC = "\033[0m"
 
 DEMO_USER = os.environ["DEMO_USER"]
-REGION = os.environ.get("AWS_REGION", "us-west-2")
+REGION = os.environ.get("AWS_REGION", "us-east-1")
 AGENT_NAME = f"aiops_demo_{DEMO_USER}_supervisor"
 # Option X — Phase 2 Client 재사용. Provider 명명은 Phase 4 incident 와 동일 패턴.
 OAUTH_PROVIDER_NAME = f"{AGENT_NAME}_gateway_provider"
@@ -143,6 +143,9 @@ def launch_runtime(runtime, subagent_arns: dict):
     print()
 
     env_vars = {
+        # Dockerfile 에 region 미주입 — 호스트 REGION 을 컨테이너로 forward.
+        "AWS_REGION": REGION,
+        "AWS_DEFAULT_REGION": REGION,
         # Phase 4 incident 와 동일 키 (단일 OAuth provider 명명).
         "OAUTH_PROVIDER_NAME": OAUTH_PROVIDER_NAME,
         "COGNITO_GATEWAY_SCOPE": os.environ["COGNITO_GATEWAY_SCOPE"],

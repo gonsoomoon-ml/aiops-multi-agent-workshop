@@ -8,7 +8,7 @@
 
 | 파일 | 역할 | git 추적 |
 |---|---|---|
-| `.env.example` | template — 모든 키 + 인라인 주석 + default 값 (`AWS_REGION=us-west-2`, `STORAGE_BACKEND=s3` 등) | ✅ (commit) |
+| `.env.example` | template — 모든 키 + 인라인 주석 + default 값 (`AWS_REGION=us-east-1`, `STORAGE_BACKEND=s3` 등) | ✅ (commit) |
 | `.env` | 실제 값 — `DEMO_USER` 등 사용자 입력 + phase deploy 산출물 | ❌ (`.gitignore`) |
 
 **최초 생성**: Phase 0 진입 전 `bash bootstrap.sh` 실행 → (1) `cp .env.example .env` (없을 때만), (2) `AWS_REGION` / `DEMO_USER` / `STORAGE_BACKEND` 대화형 결정 + 검증, (3) (`STORAGE_BACKEND=github` 선택 시) GitHub PAT → SSM SecureString.

@@ -124,7 +124,7 @@ deploy script 가 활성 상태 즉시 표시:
 [3/5] Runtime 배포 중 (Docker 빌드 → ECR 푸시 → 생성)...
    ⏳ 첫 배포 ~5-10분, 업데이트 ~40초
    ℹ DEBUG=1 활성 — container 에 forward (FlowHook + TTFT + trace 출력)
-     로그 확인: aws logs tail /aws/bedrock-agentcore/runtimes/<INCIDENT_RUNTIME_ID>-DEFAULT --follow --region us-west-2
+     로그 확인: aws logs tail /aws/bedrock-agentcore/runtimes/<INCIDENT_RUNTIME_ID>-DEFAULT --follow --region us-east-1
 ...
    DEBUG 모드:        ACTIVE (CloudWatch logs 에 FlowHook trace 출력)
 ```
@@ -144,7 +144,7 @@ set -a; source .env; set +a
 CloudWatch logs tail:
 
 ```bash
-aws logs tail /aws/bedrock-agentcore/runtimes/${INCIDENT_RUNTIME_ID}-DEFAULT --follow --region "${AWS_REGION:-us-west-2}"
+aws logs tail /aws/bedrock-agentcore/runtimes/${INCIDENT_RUNTIME_ID}-DEFAULT --follow --region "${AWS_REGION:-us-east-1}"
 ```
 
 확인 가능 trace (DEBUG=1 container 기준) — 모든 라벨이 `Incident` prefix 로 일관:

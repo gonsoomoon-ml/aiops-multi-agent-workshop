@@ -54,7 +54,7 @@ def _fetch_token_via_provider() -> str:
     Provider 가 내부적으로 Cognito 호출 + token 캐싱. clientSecret 직접 다룸 0
     (provider 등록 시 한 번만 입력).
     """
-    region = os.environ.get("AWS_REGION") or "us-west-2"
+    region = os.environ.get("AWS_REGION") or "us-east-1"
     provider_name = require_env("OAUTH_PROVIDER_NAME")
 
     dprint("Monitor → AgentCore Identity", f"via provider (provider={provider_name})", color="cyan")
@@ -75,7 +75,7 @@ def _fetch_token_direct() -> str:
     OAuth provider 등록 전 (Phase 3 미배포) 단독 검증용. clientId/clientSecret 직접
     HTTP Basic auth 로 전송 — Phase 3+ 의 provider 추상화와 동일 결과 (Cognito JWT).
     """
-    region = os.environ.get("AWS_REGION") or "us-west-2"
+    region = os.environ.get("AWS_REGION") or "us-east-1"
     domain = require_env("COGNITO_DOMAIN")
     client_id = require_env("COGNITO_CLIENT_ID")
     client_secret = require_env("COGNITO_CLIENT_SECRET")

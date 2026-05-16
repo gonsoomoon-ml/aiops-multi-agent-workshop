@@ -50,7 +50,7 @@ RED = "\033[0;31m"
 NC = "\033[0m"
 
 DEMO_USER = os.environ["DEMO_USER"]
-REGION = os.environ.get("AWS_REGION", "us-west-2")
+REGION = os.environ.get("AWS_REGION", "us-east-1")
 AGENT_NAME = f"aiops_demo_{DEMO_USER}_monitor_a2a"
 OAUTH_PROVIDER_NAME = f"{AGENT_NAME}_gateway_provider"
 
@@ -137,6 +137,9 @@ def launch_runtime(runtime):
     print()
 
     env_vars = {
+        # Dockerfile 에 region 미주입 — 호스트 REGION 을 컨테이너로 forward.
+        "AWS_REGION": REGION,
+        "AWS_DEFAULT_REGION": REGION,
         "GATEWAY_URL": os.environ["GATEWAY_URL"],
         "OAUTH_PROVIDER_NAME": OAUTH_PROVIDER_NAME,
         "COGNITO_GATEWAY_SCOPE": os.environ["COGNITO_GATEWAY_SCOPE"],

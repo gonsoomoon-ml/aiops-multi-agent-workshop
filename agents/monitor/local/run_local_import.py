@@ -77,7 +77,7 @@ def main() -> None:
     args = parser.parse_args()
 
     if not os.environ.get("AWS_REGION"):
-        print("[warn] AWS_REGION 미설정. .env 또는 export로 설정하세요. 기본값 us-west-2 사용.")
+        print("[warn] AWS_REGION 미설정. .env 또는 export로 설정하세요. 기본값 us-east-1 사용.")
 
     print("=" * 60)
     print("Monitor Agent — Phase 1 frozen baseline (mock 직접 import)")

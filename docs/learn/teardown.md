@@ -48,7 +48,7 @@ bash teardown_all.sh --yes   # 확인 skip
 ## 검증 (전체 teardown 후)
 
 ```
-aws cloudformation list-stacks --region us-west-2 \
+aws cloudformation list-stacks --region us-east-1 \
   --query "StackSummaries[?starts_with(StackName, 'aiops-demo-')].[StackName,StackStatus]" \
   --output table
 ```
@@ -58,7 +58,7 @@ aws cloudformation list-stacks --region us-west-2 \
 추가 확인:
 
 ```
-aws bedrock-agentcore-control list-agent-runtimes --region us-west-2 \
+aws bedrock-agentcore-control list-agent-runtimes --region us-east-1 \
   --query "agentRuntimes[?contains(agentRuntimeName, 'aiops_demo_')].agentRuntimeName" \
   --output table
 ```

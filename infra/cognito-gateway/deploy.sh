@@ -21,7 +21,7 @@ set -a
 source "$PROJECT_ROOT/.env"
 set +a
 
-REGION="${AWS_REGION:-us-west-2}"
+REGION="${AWS_REGION:-us-east-1}"
 DEMO_USER="${DEMO_USER:-${USER:-ubuntu}}"
 [[ "$DEMO_USER" =~ ^[a-zA-Z0-9-]{1,16}$ ]] \
     || fail "DEMO_USER='$DEMO_USER' 잘못된 형식 (영문/숫자/하이픈만 ≤16자)"

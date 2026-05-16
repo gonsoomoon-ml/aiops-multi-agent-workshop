@@ -14,7 +14,7 @@ fail() { echo -e "${RED}[teardown]${NC} $1"; exit 1; }
 
 [[ -f "$PROJECT_ROOT/.env" ]] && { set -a; source "$PROJECT_ROOT/.env"; set +a; }
 
-REGION="${AWS_REGION:-us-west-2}"
+REGION="${AWS_REGION:-us-east-1}"
 DEMO_USER="${DEMO_USER:-${USER:-ubuntu}}"
 [[ "$DEMO_USER" =~ ^[a-zA-Z0-9-]{1,16}$ ]] \
     || fail "DEMO_USER='$DEMO_USER' 잘못된 형식 (영문/숫자/하이픈만 ≤16자)"
@@ -50,6 +50,14 @@ DEMO_USER="$DEMO_USER" AWS_REGION="$REGION" \
 # ── 2. CFN stack 삭제 (post-verify) ─────────────
 log "CFN stack 삭제: $STACK"
 delete_stack "$STACK"
+
+# ── Lambda CW Log Group 삭제 (CFN 가 cascade 안 함 — first-invoke 시 auto-create) ──
+for LAMBDA_NAME in history-mock cloudwatch-wrapper; do
+    LAMBDA_LG="/aws/lambda/aiops-demo-${DEMO_USER}-${LAMBDA_NAME}"
+    if aws logs delete-log-group --region "$REGION" --log-group-name "$LAMBDA_LG" 2>/dev/null; then
+        log "  ✓ Lambda log group ${LAMBDA_LG} 삭제"
+    fi
+done
 
 # ── 3. DEPLOY_BUCKET 비우기 + 삭제 ──────────────
 if aws s3api head-bucket --bucket "$DEPLOY_BUCKET" --region "$REGION" 2>/dev/null; then

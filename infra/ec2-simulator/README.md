@@ -101,7 +101,7 @@ sleep 90                        # EvaluationPeriods=1 × Period=60s + buffer
 
 aws cloudwatch describe-alarms \
     --alarm-names "payment-${DEMO_USER}-status-check" \
-    --region us-west-2 \
+    --region us-east-1 \
     --query 'MetricAlarms[0].StateValue' \
     --output text
 # 기대: ALARM
@@ -126,7 +126,7 @@ curl http://$EC2_PUBLIC_IP:8080/health   # 다시 ok
 ```bash
 aws cloudwatch describe-alarms \
     --alarm-names "payment-${DEMO_USER}-noisy-cpu" \
-    --region us-west-2 \
+    --region us-east-1 \
     --query 'MetricAlarms[0].[AlarmName,StateValue]' --output table
 # 기대: payment-ubuntu-noisy-cpu | OK
 ```

@@ -42,7 +42,7 @@ def create_supervisor_agent(
     """
     # Sonnet 4.6 — Supervisor 는 routing decision + 응답 통합 — Sonnet 급 필요.
     model_id = os.environ.get("SUPERVISOR_MODEL_ID") or "global.anthropic.claude-sonnet-4-6"
-    region = os.environ.get("AWS_REGION") or "us-west-2"
+    region = os.environ.get("AWS_REGION") or "us-east-1"
 
     prompt_text = _load_system_prompt(system_prompt_filename)
     dprint_box(

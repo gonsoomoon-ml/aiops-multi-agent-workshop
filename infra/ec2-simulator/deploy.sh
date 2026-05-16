@@ -26,7 +26,7 @@ set -a
 source "$PROJECT_ROOT/.env"
 set +a
 
-REGION="${AWS_REGION:-us-west-2}"
+REGION="${AWS_REGION:-us-east-1}"
 
 # ── DEMO_USER — 동일 AWS 계정에 여러 시연자 deploy 시 충돌 방지용 prefix ──
 # 우선순위: .env 의 DEMO_USER > OS $USER > 'ubuntu'. 워크샵 multi-user 시 .env 명시 권장.

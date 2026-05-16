@@ -13,7 +13,7 @@ import time
 
 import boto3
 
-REGION = os.environ.get("AWS_REGION", "us-west-2")
+REGION = os.environ.get("AWS_REGION", "us-east-1")
 DEMO_USER = os.environ.get("DEMO_USER", "")  # main() 에서 검증
 TARGET_DELETE_WAIT_SEC = 3  # lab-09: target DELETING 비동기 — gateway 삭제 전 대기
 

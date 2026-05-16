@@ -18,7 +18,7 @@ if [[ -f "$PROJECT_ROOT/.env" ]]; then
     set +a
 fi
 
-REGION="${AWS_REGION:-us-west-2}"
+REGION="${AWS_REGION:-us-east-1}"
 DEMO_USER="${DEMO_USER:-${USER:-ubuntu}}"
 STACK_EC2="aiops-demo-${DEMO_USER}-ec2-simulator"
 STACK_ALARMS="aiops-demo-${DEMO_USER}-alarms"

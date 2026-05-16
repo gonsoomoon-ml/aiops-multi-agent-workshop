@@ -36,7 +36,7 @@ PROJECT_ROOT = SCRIPT_DIR.parents[2]
 # 모든 metadata 가 repo root .env (MONITOR_ prefix) — phase 4/5 와 namespace 분리
 load_dotenv(PROJECT_ROOT / ".env", override=True)
 
-REGION = os.getenv("AWS_REGION", "us-west-2")
+REGION = os.getenv("AWS_REGION", "us-east-1")
 RUNTIME_ARN = os.getenv("MONITOR_RUNTIME_ARN")
 
 GREEN, YELLOW, BLUE, RED, DIM, NC = (

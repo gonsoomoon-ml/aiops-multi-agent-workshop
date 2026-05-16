@@ -16,7 +16,7 @@ import sys
 
 import boto3
 
-REGION = os.environ.get("AWS_REGION", "us-west-2")
+REGION = os.environ.get("AWS_REGION", "us-east-1")
 TARGET_NAME = "s3-storage"
 
 S3_TOOL_SCHEMA = [

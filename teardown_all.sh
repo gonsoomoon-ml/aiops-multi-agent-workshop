@@ -14,7 +14,7 @@ cd "$PROJECT_ROOT"
 # .env 로드 (DEMO_USER 확인용)
 [ -f .env ] && { set -a; source .env; set +a; }
 DEMO_USER="${DEMO_USER:?DEMO_USER 미설정 (repo root .env 필요)}"
-REGION="${AWS_REGION:-us-west-2}"
+REGION="${AWS_REGION:-us-east-1}"
 
 YELLOW=$'\033[1;33m'; GREEN=$'\033[0;32m'; RED=$'\033[0;31m'; NC=$'\033[0m'
 

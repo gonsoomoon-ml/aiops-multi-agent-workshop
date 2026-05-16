@@ -9,13 +9,15 @@ PROJECT_ROOT="$(cd "${SCRIPT_DIR}/../../.." && pwd)"
 # .env 로드: repo root 단일 (Phase 3/4 second-pass parity — MONITOR_A2A_ prefix)
 [ -f "$PROJECT_ROOT/.env" ] && { set -a; source "$PROJECT_ROOT/.env"; set +a; }
 
-REGION="${AWS_REGION:-us-west-2}"
+REGION="${AWS_REGION:-us-east-1}"
 DEMO_USER="${DEMO_USER:?DEMO_USER 미설정 (repo root .env 필요)}"
 AGENT_NAME="aiops_demo_${DEMO_USER}_monitor_a2a"
 OAUTH_PROVIDER_NAME="${MONITOR_A2A_OAUTH_PROVIDER_NAME:-${AGENT_NAME}_gateway_provider}"
 RUNTIME_ID="${MONITOR_A2A_RUNTIME_ID:-}"
 ECR_REPO="bedrock-agentcore-${AGENT_NAME}"
-LOG_GROUP="/aws/bedrock-agentcore/runtimes/${AGENT_NAME}"
+# Log Group prefix — 실제 이름은 ${AGENT_NAME}-<runtime_id>-DEFAULT 형식.
+# Runtime ID 가 매 deploy 마다 바뀌므로 prefix 로 매칭하여 redeploy 흔적까지 정리.
+LOG_GROUP_PREFIX="/aws/bedrock-agentcore/runtimes/${AGENT_NAME}-"
 
 GREEN='\033[0;32m'; YELLOW='\033[1;33m'; RED='\033[0;31m'; NC='\033[0m'
 
@@ -76,12 +78,17 @@ else
     echo -e "  (Role 없음 — skip)"
 fi
 
-echo -e "${YELLOW}[6/6] CW Log Group 삭제${NC}"
-if aws logs delete-log-group --region "$REGION" --log-group-name "$LOG_GROUP" 2>/dev/null; then
-    echo -e "  ${GREEN}✓ ${LOG_GROUP} 삭제${NC}"
-else
-    echo -e "  (Log Group 없음 — skip)"
-fi
+echo -e "${YELLOW}[6/6] CW Log Group 삭제 (prefix 매칭 — redeploy 흔적 포함)${NC}"
+DELETED_COUNT=0
+for LG in $(aws logs describe-log-groups --region "$REGION" \
+    --log-group-name-prefix "$LOG_GROUP_PREFIX" \
+    --query 'logGroups[].logGroupName' --output text 2>/dev/null); do
+    if aws logs delete-log-group --region "$REGION" --log-group-name "$LG" 2>/dev/null; then
+        echo -e "  ${GREEN}✓ ${LG} 삭제${NC}"
+        DELETED_COUNT=$((DELETED_COUNT + 1))
+    fi
+done
+[ "$DELETED_COUNT" -eq 0 ] && echo -e "  (Log Group 없음 — skip)"
 
 if [ -f "${PROJECT_ROOT}/.env" ]; then
     sed -i.bak '/^MONITOR_A2A_RUNTIME_NAME=/d; /^MONITOR_A2A_RUNTIME_ARN=/d; /^MONITOR_A2A_RUNTIME_ID=/d; /^MONITOR_A2A_OAUTH_PROVIDER_NAME=/d; /^# Phase 5 — Monitor A2A Runtime/d' "${PROJECT_ROOT}/.env"

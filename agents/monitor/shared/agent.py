@@ -36,7 +36,7 @@ def create_agent(
             ``"system_prompt_live.md"``.
     """
     model_id = os.environ.get("MONITOR_MODEL_ID") or "global.anthropic.claude-sonnet-4-6"
-    region = os.environ.get("AWS_REGION") or "us-west-2"
+    region = os.environ.get("AWS_REGION") or "us-east-1"
 
     prompt_text = _load_system_prompt(system_prompt_filename)
     dprint_box(

@@ -31,7 +31,7 @@ import time
 
 import boto3
 
-REGION = os.environ.get("AWS_REGION", "us-west-2")
+REGION = os.environ.get("AWS_REGION", "us-east-1")
 DEMO_USER = os.environ.get("DEMO_USER", "")  # main() 의 required 검증에서 빈 값 거부
 
 GATEWAY_NAME = f"aiops-demo-{DEMO_USER}-gateway"

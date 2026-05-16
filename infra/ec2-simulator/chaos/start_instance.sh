@@ -7,7 +7,7 @@ if [[ -f "$PROJECT_ROOT/.env" ]]; then
     set -a; source "$PROJECT_ROOT/.env"; set +a
 fi
 
-REGION="${AWS_REGION:-us-west-2}"
+REGION="${AWS_REGION:-us-east-1}"
 PROJECT_TAG="${PROJECT_TAG:-aiops-demo}"
 DEMO_USER="${DEMO_USER:-${USER:-ubuntu}}"
 
