@@ -59,6 +59,7 @@ Resources:
     Properties:
       InstanceType: !Ref InstanceType
       ImageId: !Ref AmiId
+      Monitoring: true
       KeyName: !Ref EC2KeyPair
       SecurityGroupIds:
         - !Ref SimulatorSG
