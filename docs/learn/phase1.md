@@ -308,7 +308,7 @@ uv run python -m agents.monitor.local.run_local_import \
 
 ## 다음 단계
 
-→ [Phase 2 — Gateway + MCP](/learn/phase2.md)
+→ [Phase 2 — Gateway + MCP](/docs/learn/phase2.md)
 
 Phase 2에서는 Mock 대신 **실제 CloudWatch API**를 호출하도록 변경합니다. 
 **Agent 코드는 그대로** — 도구만 MCP로 교체!
