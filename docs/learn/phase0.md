@@ -189,7 +189,7 @@ bash infra/ec2-simulator/chaos/start_instance.sh
 
 ## 다음 단계
 
-→ [Phase 1 — Local Strands Agent](/learn/phase1.md)
+→ [Phase 1 — Local Strands Agent](/docs/learn/phase1.md)
 
 ---
 
