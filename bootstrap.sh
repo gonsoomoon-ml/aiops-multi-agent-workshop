@@ -26,7 +26,14 @@ echo ""
 echo "=== 단계 1/5: Python 의존성 (uv sync) + AWS 자격증명 ==="
 
 if ! command -v uv &>/dev/null; then
-    fail "'uv'를 찾을 수 없습니다. 설치: curl -LsSf https://astral.sh/uv/install.sh | sh"
+    info "'uv' 미발견 — 자동 설치 시작 (https://astral.sh/uv/install.sh)"
+    curl -LsSf https://astral.sh/uv/install.sh | sh \
+        || fail "'uv' 자동 설치 실패. 수동 설치: curl -LsSf https://astral.sh/uv/install.sh | sh"
+    # uv 설치 스크립트 기본 경로 — 현재 셸 PATH 에 즉시 반영
+    export PATH="$HOME/.local/bin:$HOME/.cargo/bin:$PATH"
+    command -v uv &>/dev/null \
+        || fail "'uv' 설치 후에도 PATH 에서 찾을 수 없습니다. 새 터미널에서 재시도하세요."
+    pass "'uv' 자동 설치 완료 ($(uv --version))"
 fi
 
 aws sts get-caller-identity --query Account --output text >/dev/null 2>&1 \
