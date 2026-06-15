@@ -207,6 +207,9 @@ Resources:
       ManagedPolicyArns:
         - arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore
         - arn:aws:iam::aws:policy/CloudWatchAgentServerPolicy
+        # 워크샵 청중이 VSCode 안에서 다른 스택(ec2-simulator, cognito-gateway 등)을
+        # 배포·조회할 수 있도록 AdministratorAccess 부여. (CloudFormation:DescribeStacks 등)
+        - arn:aws:iam::aws:policy/AdministratorAccess
       Tags:
         - Key: Name
           Value: !Sub '${AWS::StackName}-VSCode-Role'
