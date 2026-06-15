@@ -187,7 +187,7 @@ bash bootstrap.sh
 
 | Phase   | 이름                                        | 핵심 산출물                                                                                                | Narrative                                      | 예&nbsp;상&nbsp;소&nbsp;요 | 상&nbsp;태  |
 | ----- | ----------------------------------------- | ----------------------------------------------------------------------------------------------------- | ---------------------------------------------- | ----- | --- |
-| **환&nbsp;경&nbsp;구&nbsp;성** | 실습 환경 구축         | Workshop code server + kiro 설정     | [docs/learn/workshop_setup.md](docs/learn/workshop_setup.md)    |  10 분   | ✅  |
+| **환&nbsp;경&nbsp;구&nbsp;성** | 실습 환경 구축         | CloudShell self-deploy (VSCode + Claude Code on Bedrock) <br/>· 대안: [Workshop Studio + Kiro](docs/learn/workshop_setup.md)     | [docs/learn/workshop_setup_cloudshell.md](docs/learn/workshop_setup_cloudshell.md)    |  10 분   | ✅  |
 | **0**   | 기반 인프라                                    | EC2 시뮬레이터 + CloudWatch alarm 2종 (real + noise) + 카오스 스크립트                                             | [docs/learn/phase0.md](docs/learn/phase0.md) | 30 분  | ✅   |
 | **1**   | Strands Agent (local, mock)               | 로컬 Monitor Agent (Strands) + 3가지 진단 유형 (Rule 폐기 / Threshold 상향 / Time window 제외)                      | [docs/learn/phase1.md](docs/learn/phase1.md) | 40 분  | ✅   |
 | **2**   | AgentCore Gateway + MCP + Debug mode      | AgentCore Gateway + MCP 도구 외부화 (CloudWatch + history mock Lambda) + FlowHook 기반 Debug trace (DEBUG=1) | [docs/learn/phase2.md](docs/learn/phase2.md) | 60 분  | ✅   |
