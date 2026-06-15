@@ -179,7 +179,7 @@ class LazyIncidentExecutor(StrandsA2AExecutor):
                     self._built = True
         await super().execute(context, event_queue)
 
-    async def _handle_streaming_event(self, event, updater):
+    async def _handle_streaming_event(self, event, updater, stream_state):
         # Bedrock raw event 의 token usage 누적 (Strands base 가 폐기 → 우리가 가로챔).
         meta = event.get("event", {}).get("metadata", {})
         if "usage" in meta:
@@ -187,7 +187,7 @@ class LazyIncidentExecutor(StrandsA2AExecutor):
             for k in self._usage_totals:
                 self._usage_totals[k] += usage.get(k, 0)
         # 기존 동작 (text streaming + result dispatch) 은 base 위임.
-        await super()._handle_streaming_event(event, updater)
+        await super()._handle_streaming_event(event, updater, stream_state)
 
     async def _handle_agent_result(self, result, updater):
         # base 의 add_artifact 호출을 우리가 직접 — metadata 부착 위해 inline 복제.
