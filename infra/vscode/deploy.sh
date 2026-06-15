@@ -73,12 +73,14 @@ echo ""
 echo -e "${CYAN}[2/5] 설정 입력 / Configuration...${NC}"
 echo ""
 
-# Stack Name
-read -p "  Stack Name (여러 사용자는 각자 다른 이름 사용): " STACK_NAME
-if [ -z "$STACK_NAME" ]; then
-    echo -e "${RED}오류: Stack Name은 필수입니다${NC}"
+# Alias (DEMO_USER) — 다른 워크샵 스택과 동일한 prefix 규약 (aiops-demo-${alias}-<component>)
+read -p "  Alias (영문/숫자/하이픈 ≤16자, 예: gildong): " ALIAS
+if [[ ! "$ALIAS" =~ ^[a-zA-Z0-9-]{1,16}$ ]]; then
+    echo -e "${RED}오류: Alias는 영문/숫자/하이픈만 ≤16자${NC}"
     exit 1
 fi
+STACK_NAME="aiops-demo-${ALIAS}-vscode"
+echo -e "  ${GREEN}Stack Name: $STACK_NAME${NC}"
 
 # Password
 while true; do
@@ -324,5 +326,5 @@ echo "      --role-name $ROLE_NAME \\"
 echo "      --policy-arn arn:aws:iam::aws:policy/AdministratorAccess"
 echo ""
 echo -e "  ${BOLD}스택 삭제:${NC}"
-echo "    bash deploy.sh --delete $STACK_NAME"
+echo "    bash deploy.sh --delete $STACK_NAME    # aiops-demo-${ALIAS}-vscode"
 echo ""
